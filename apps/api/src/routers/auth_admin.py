@@ -43,6 +43,7 @@ class ManageableOrganizationResponse(BaseModel):
 
 
 class UserManagementContextResponse(BaseModel):
+    platform_owner: bool
     organizations: list[ManageableOrganizationResponse]
 
 
@@ -89,6 +90,8 @@ async def _request_json(
 
 
 def _assignable_roles_for_manager(role: str) -> list[str]:
+    if role == "platform_owner":
+        return ["viewer", "creator", "admin", "owner"]
     if role == "owner":
         return ["viewer", "creator", "admin"]
     if role == "admin":
@@ -119,6 +122,46 @@ async def _get_or_create_organization(client: httpx.AsyncClient, payload: Create
     if not isinstance(created, list) or not created:
         raise HTTPException(status_code=502, detail="Failed to create organization")
     return created[0]
+
+
+async def _is_platform_owner(client: httpx.AsyncClient, current_user: CurrentUser) -> bool:
+    if not settings.AUTH_ENABLED:
+        return False
+
+    platform_owners = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/platform_owners",
+        params={
+            "select": "user_id",
+            "user_id": f"eq.{current_user.user_id}",
+            "limit": "1",
+        },
+    )
+    return isinstance(platform_owners, list) and bool(platform_owners)
+
+
+async def _get_all_organizations_for_platform_owner(client: httpx.AsyncClient) -> list[ManageableOrganizationResponse]:
+    organizations = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organizations",
+        params={"select": "id,slug,name", "order": "slug.asc"},
+    )
+    if not isinstance(organizations, list):
+        return []
+
+    return [
+        ManageableOrganizationResponse(
+            id=organization["id"],
+            slug=organization["slug"],
+            name=organization["name"],
+            role="platform_owner",
+            assignable_roles=_assignable_roles_for_manager("platform_owner"),
+        )
+        for organization in organizations
+        if organization.get("id") and organization.get("slug") and organization.get("name")
+    ]
 
 
 async def _get_manageable_organizations(
@@ -178,12 +221,32 @@ async def _get_manageable_organizations(
     return manageable_organizations
 
 
+async def _get_user_management_context(
+    client: httpx.AsyncClient,
+    current_user: CurrentUser,
+) -> UserManagementContextResponse:
+    is_platform_owner = await _is_platform_owner(client, current_user)
+    if is_platform_owner:
+        return UserManagementContextResponse(
+            platform_owner=True,
+            organizations=await _get_all_organizations_for_platform_owner(client),
+        )
+
+    return UserManagementContextResponse(
+        platform_owner=False,
+        organizations=await _get_manageable_organizations(client, current_user),
+    )
+
+
 async def _require_user_manager_for_payload(
     client: httpx.AsyncClient,
     current_user: CurrentUser,
     payload: CreateUserRequest,
 ) -> ManageableOrganizationResponse | None:
     if not settings.AUTH_ENABLED:
+        return None
+
+    if await _is_platform_owner(client, current_user):
         return None
 
     manageable_organizations = await _get_manageable_organizations(client, current_user)
@@ -206,8 +269,7 @@ async def get_user_management_context(
     current_user: CurrentUser = current_user_dependency,
 ) -> UserManagementContextResponse:
     async with httpx.AsyncClient(timeout=20) as client:
-        organizations = await _get_manageable_organizations(client, current_user)
-    return UserManagementContextResponse(organizations=organizations)
+        return await _get_user_management_context(client, current_user)
 
 
 @router.post("/admin/users", response_model=CreatedUserResponse, status_code=201)

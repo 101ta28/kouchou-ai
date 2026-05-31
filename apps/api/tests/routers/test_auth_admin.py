@@ -24,8 +24,10 @@ def create_request() -> auth_admin.CreateUserRequest:
     )
 
 
-def _mock_supabase_requests(manager_role: str):
+def _mock_supabase_requests(manager_role: str, *, platform_owner: bool = False):
     async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return [{"user_id": "user-1"}] if platform_owner else []
         if path == "/rest/v1/organization_memberships":
             return [{"organization_id": "org-1", "role": manager_role}]
         if path == "/rest/v1/organizations":
@@ -89,3 +91,15 @@ async def test_owner_can_issue_admin_but_not_owner(monkeypatch, current_user, cr
         await auth_admin._require_user_manager_for_payload(object(), current_user, create_request)
 
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_platform_owner_can_issue_owner_to_new_organization(monkeypatch, current_user, create_request):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+    monkeypatch.setattr(auth_admin, "_request_json", _mock_supabase_requests("admin", platform_owner=True))
+    create_request.organization_slug = "new-org"
+    create_request.role = "owner"
+
+    organization = await auth_admin._require_user_manager_for_payload(object(), current_user, create_request)
+
+    assert organization is None

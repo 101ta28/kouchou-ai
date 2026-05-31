@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Box, Field, HStack, Heading, Input, NativeSelect, Text, Textarea, VStack } from "@chakra-ui/react";
 import { type FormEvent, useEffect, useState } from "react";
 
-type Role = "admin" | "creator" | "viewer";
+type Role = "owner" | "admin" | "creator" | "viewer";
 
 type CreatedUser = {
   user_id: string;
@@ -26,7 +26,7 @@ type ManageableOrganization = {
   id: string;
   slug: string;
   name: string;
-  role: "owner" | "admin";
+  role: "platform_owner" | "owner" | "admin";
   assignable_roles: Role[];
 };
 
@@ -37,6 +37,7 @@ export function UserIssueForm() {
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [role, setRole] = useState<Role>("viewer");
+  const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [manageableOrganizations, setManageableOrganizations] = useState<ManageableOrganization[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
@@ -44,7 +45,11 @@ export function UserIssueForm() {
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
 
   const selectedOrganization = manageableOrganizations.find((organization) => organization.slug === organizationSlug);
-  const assignableRoles = selectedOrganization?.assignable_roles ?? (["viewer", "creator", "admin"] satisfies Role[]);
+  const assignableRoles =
+    selectedOrganization?.assignable_roles ??
+    (isPlatformOwner
+      ? (["viewer", "creator", "admin", "owner"] satisfies Role[])
+      : (["viewer", "creator"] satisfies Role[]));
 
   const issuedUserText = createdUser
     ? [
@@ -80,13 +85,14 @@ export function UserIssueForm() {
           return;
         }
 
-        const context: { organizations: ManageableOrganization[] } = await response.json();
+        const context: { platform_owner: boolean; organizations: ManageableOrganization[] } = await response.json();
         if (!isMounted) {
           return;
         }
 
+        setIsPlatformOwner(context.platform_owner);
         setManageableOrganizations(context.organizations);
-        if (context.organizations.length > 0) {
+        if (!context.platform_owner && context.organizations.length > 0) {
           const firstOrganization = context.organizations[0];
           setOrganizationSlug((current) => current || firstOrganization.slug);
           setOrganizationName((current) => current || firstOrganization.name);
@@ -211,7 +217,7 @@ export function UserIssueForm() {
         </Field.Root>
         <Field.Root required>
           <Field.Label>組織 slug</Field.Label>
-          {manageableOrganizations.length > 0 ? (
+          {manageableOrganizations.length > 0 && !isPlatformOwner ? (
             <NativeSelect.Root>
               <NativeSelect.Field
                 value={organizationSlug}
@@ -233,14 +239,36 @@ export function UserIssueForm() {
               <NativeSelect.Indicator />
             </NativeSelect.Root>
           ) : (
-            <Input
-              value={organizationSlug}
-              onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase())}
-              pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
-            />
+            <>
+              <Input
+                value={organizationSlug}
+                onChange={(event) => {
+                  const nextSlug = event.target.value.toLowerCase();
+                  const nextOrganization = manageableOrganizations.find(
+                    (organization) => organization.slug === nextSlug,
+                  );
+                  setOrganizationSlug(nextSlug);
+                  if (nextOrganization) {
+                    setOrganizationName(nextOrganization.name);
+                    setRole(nextOrganization.assignable_roles[0] ?? "viewer");
+                  }
+                }}
+                pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+                list={isPlatformOwner ? "manageable-organizations" : undefined}
+              />
+              {isPlatformOwner && (
+                <datalist id="manageable-organizations">
+                  {manageableOrganizations.map((organization) => (
+                    <option key={organization.id} value={organization.slug}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </datalist>
+              )}
+            </>
           )}
         </Field.Root>
-        <Field.Root disabled={manageableOrganizations.length > 0}>
+        <Field.Root disabled={manageableOrganizations.length > 0 && !isPlatformOwner}>
           <Field.Label>組織名</Field.Label>
           <Input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
         </Field.Root>
