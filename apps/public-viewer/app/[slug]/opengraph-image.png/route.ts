@@ -1,7 +1,7 @@
-import { generateStaticParams } from "@/app/[slug]/page";
+import { getReportStaticParams } from "@/app/utils/report-static-params";
 import { OpImage } from "../_op-image";
 
-export { generateStaticParams };
+export const generateStaticParams = getReportStaticParams;
 
 type PageProps = {
   params: Promise<{

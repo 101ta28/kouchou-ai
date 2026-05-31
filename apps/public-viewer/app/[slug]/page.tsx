@@ -6,14 +6,13 @@ import { BackButton } from "@/components/report/BackButton";
 import { ClientContainer } from "@/components/report/ClientContainer";
 import { Overview } from "@/components/report/Overview";
 import { Reporter } from "@/components/reporter/Reporter";
-import type { Meta, Report, Result } from "@/type";
+import type { Meta, Result } from "@/type";
 import { ReportVisibility } from "@/type";
 import { Box, Separator } from "@chakra-ui/react";
 import type { Metadata } from "next";
 import { notFound, unstable_rethrow } from "next/navigation";
 import { getApiBaseUrl } from "../utils/api";
 import { ensureRequestBoundRendering } from "../utils/dynamic-rendering";
-import { createStaticBuildFetchError, getStaticBuildReportSlugs, isStaticExportBuild } from "../utils/static-build";
 import { isAuthEnabled } from "../utils/supabase/env";
 import { getAuthorizationHeader } from "../utils/supabase/server";
 
@@ -25,39 +24,12 @@ type PageProps = {
 
 // ISR 5分おきにレポート更新確認
 export const revalidate = 300;
-
-export async function generateStaticParams() {
-  if (isAuthEnabled() && !isStaticExportBuild()) {
-    return [];
-  }
-
-  let reports: Report[];
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/reports`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
-        "Content-Type": "application/json",
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch reports: ${response.status} ${response.statusText}`);
-    }
-    reports = await response.json();
-  } catch (error) {
-    if (isStaticExportBuild()) {
-      throw createStaticBuildFetchError(error);
-    }
-
-    return [];
-  }
-
-  return getStaticBuildReportSlugs(reports);
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  await ensureRequestBoundRendering();
+
   try {
-    await ensureRequestBoundRendering();
     const slug = (await params).slug;
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json?report_slug=${encodeURIComponent(slug)}`, {
