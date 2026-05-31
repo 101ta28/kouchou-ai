@@ -3,7 +3,19 @@
 import { getApiBaseUrl } from "@/app/utils/api";
 import { createClient } from "@/app/utils/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Box, Field, HStack, Heading, Input, NativeSelect, Text, Textarea, VStack } from "@chakra-ui/react";
+import {
+  Alert,
+  Badge,
+  Box,
+  Field,
+  HStack,
+  Heading,
+  Input,
+  NativeSelect,
+  Text,
+  Textarea,
+  VStack,
+} from "@chakra-ui/react";
 import { type FormEvent, useEffect, useState } from "react";
 
 type Role = "owner" | "admin" | "creator" | "viewer";
@@ -28,6 +40,13 @@ type ManageableOrganization = {
   name: string;
   role: "platform_owner" | "owner" | "admin";
   assignable_roles: Role[];
+};
+
+const roleDescriptions: Record<Role, string> = {
+  owner: "組織の責任者。組織内の admin / creator / viewer を管理できます。",
+  admin: "広聴AI オンラインの運用担当者。組織内の creator / viewer を招待できます。",
+  creator: "レポートを作成・編集する担当者です。",
+  viewer: "共有されたレポートを閲覧する利用者です。",
 };
 
 export function UserIssueForm() {
@@ -196,7 +215,31 @@ export function UserIssueForm() {
       p="8"
     >
       <VStack gap="5" align="stretch">
-        <Heading fontSize="xl">ユーザー発行</Heading>
+        <Box>
+          <HStack gap="3" align="center" mb="2">
+            <Heading fontSize="xl">広聴AI オンライン ユーザー招待</Heading>
+            <Badge colorPalette={isPlatformOwner ? "purple" : "blue"}>
+              {isPlatformOwner ? "platform owner" : "organization manager"}
+            </Badge>
+          </HStack>
+          <Text color="gray.600" fontSize="sm">
+            広聴AI
+            オンラインに参加する組織と利用者を発行します。発行後に表示されるログイン情報を招待相手へ共有してください。
+          </Text>
+        </Box>
+        <Alert.Root status={isPlatformOwner ? "info" : "warning"}>
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title fontSize="sm">
+              {isPlatformOwner ? "プラットフォームオーナー権限で操作中" : "自組織の招待権限で操作中"}
+            </Alert.Title>
+            <Alert.Description fontSize="sm">
+              {isPlatformOwner
+                ? "新しい組織を作成し、初期 owner / admin / creator / viewer を発行できます。通常運用では、組織の owner または admin に利用者招待を委任してください。"
+                : "選択できる組織とロールは、あなたが管理できる範囲に制限されています。他組織への招待や owner の発行はできません。"}
+            </Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
         <Field.Root required>
           <Field.Label>メールアドレス</Field.Label>
           <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="off" />
@@ -284,6 +327,7 @@ export function UserIssueForm() {
             </NativeSelect.Field>
             <NativeSelect.Indicator />
           </NativeSelect.Root>
+          <Field.HelperText>{roleDescriptions[role]}</Field.HelperText>
         </Field.Root>
         {message && <Text color={createdUser ? "green.700" : "red.600"}>{message}</Text>}
         {createdUser && (
