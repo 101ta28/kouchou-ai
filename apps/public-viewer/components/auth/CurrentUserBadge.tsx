@@ -108,7 +108,7 @@ export function CurrentUserBadge() {
     <HStack gap="3">
       {currentUser.canCreateReports && adminCreateUrl && (
         <Button size="xs" variant="secondary" asChild>
-          <a href={adminCreateUrl}>
+          <a href={adminCreateUrl} target="_blank" rel="noopener noreferrer">
             <PenLine />
             レポート作成
           </a>
