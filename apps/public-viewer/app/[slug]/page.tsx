@@ -146,6 +146,7 @@ export default async function Page({ params }: PageProps) {
       next: { tags: [`report-${slug}`] },
     });
   } catch (e) {
+    unstable_rethrow(e);
     const errorMessage = e instanceof Error ? e.message : String(e);
     return <ApiConnectionError apiUrl={apiUrl} errorMessage={errorMessage} isServerSide={true} />;
   }

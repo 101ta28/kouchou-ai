@@ -1,4 +1,4 @@
-import { getImageFromServerSrc } from "@/app/utils/image-src";
+import { getBasePath, getImageFromServerSrc } from "@/app/utils/image-src";
 import { Provider } from "@/components/ui/provider";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import type { Metadata } from "next";
@@ -15,6 +15,13 @@ export const metadata: Metadata = {
   },
   description: "広聴AIオンライン",
 };
+
+if (process.env.NEXT_PUBLIC_OUTPUT_MODE !== "export") {
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000");
+  metadata.metadataBase = new URL(siteUrl + getBasePath());
+}
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

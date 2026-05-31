@@ -129,6 +129,7 @@ export default async function Page() {
       </>
     );
   } catch (e) {
+    unstable_rethrow(e);
     const apiUrl = getApiBaseUrl();
     const errorMessage = e instanceof Error ? e.message : String(e);
     return <ApiConnectionError apiUrl={apiUrl} errorMessage={errorMessage} isServerSide={true} />;
