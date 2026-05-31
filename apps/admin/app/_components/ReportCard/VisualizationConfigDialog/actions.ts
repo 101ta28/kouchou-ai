@@ -17,7 +17,7 @@ type FetchVisualizationConfigResult =
 export async function fetchVisualizationConfig(reportSlug: string): Promise<FetchVisualizationConfigResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
-      headers: getAdminApiHeaders(),
+      headers: await getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -44,7 +44,7 @@ export async function updateVisualizationConfig(
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
       method: "PATCH",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       body: JSON.stringify(config),

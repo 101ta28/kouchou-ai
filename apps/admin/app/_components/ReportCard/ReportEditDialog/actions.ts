@@ -10,7 +10,7 @@ export async function updateReportConfig(reportSlug: string, formData: FormData)
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/config`, {
       method: "PATCH",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({

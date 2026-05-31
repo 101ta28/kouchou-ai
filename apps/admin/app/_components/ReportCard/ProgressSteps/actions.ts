@@ -23,7 +23,7 @@ type StepStatusResult =
 export async function fetchReportStepStatus(slug: string): Promise<StepStatusResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/status/step-json`, {
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         Pragma: "no-cache",

@@ -12,7 +12,7 @@ export async function importSpreadsheet(url: string, fileName: string): Promise<
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/spreadsheet/import`, {
       method: "POST",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({
@@ -38,7 +38,7 @@ export async function importSpreadsheet(url: string, fileName: string): Promise<
 export async function getSpreadsheetData(id: string): Promise<{ comments: SpreadsheetComment[] }> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/spreadsheet/data/${id}`, {
-      headers: getAdminApiHeaders(),
+      headers: await getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -58,7 +58,7 @@ export async function deleteSpreadsheetData(id: string): Promise<void> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/inputs/${id}`, {
       method: "DELETE",
-      headers: getAdminApiHeaders(),
+      headers: await getAdminApiHeaders(),
     });
 
     if (!response.ok) {

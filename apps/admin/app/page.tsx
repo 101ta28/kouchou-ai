@@ -7,7 +7,6 @@ import { getAdminApiHeaders } from "./utils/admin-api-key";
 import { getApiBaseUrl } from "./utils/api";
 import { getReportViewerUrl } from "./utils/report-viewer";
 import { isAuthEnabled } from "./utils/supabase/env";
-import { getAuthorizationHeader } from "./utils/supabase/server";
 
 type ErrorInfo = {
   title: string;
@@ -94,13 +93,11 @@ function ErrorDisplay({ errorInfo }: { errorInfo: ErrorInfo }) {
 
 export default async function Page() {
   const apiUrl = getApiBaseUrl();
-  const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
 
   if (isAuthEnabled()) {
     const accessResponse = await fetch(`${apiUrl}/admin/current-user/access`, {
       method: "GET",
-      headers: getAdminApiHeaders({
-        ...authHeaders,
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       cache: "no-store",
@@ -116,8 +113,7 @@ export default async function Page() {
   try {
     const response = await fetch(`${apiUrl}/admin/reports`, {
       method: "GET",
-      headers: getAdminApiHeaders({
-        ...authHeaders,
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       cache: "no-store",

@@ -26,7 +26,7 @@ export async function csvDownloadCommon(slug: string, options: CsvDownloadOption
 
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/comments/${slug}/csv`, {
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
     });

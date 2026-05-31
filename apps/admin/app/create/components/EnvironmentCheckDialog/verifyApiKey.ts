@@ -15,7 +15,7 @@ type VerificationResult = {
 
 export const verifyApiKey = async (provider: string, userApiKey?: string) => {
   try {
-    const headers = getAdminApiHeaders({
+    const headers = await getAdminApiHeaders({
       "Content-Type": "application/json",
     });
 
@@ -46,7 +46,7 @@ export const verifyChatGptApiKeyWithProvider = async (provider = "openai") => {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify-chatgpt?provider=${provider}`, {
       method: "GET",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
     });

@@ -44,7 +44,7 @@ export async function createReport({
   userApiKey?: string;
 }): Promise<CreateReportResult> {
   try {
-    const headers = getAdminApiHeaders({
+    const headers = await getAdminApiHeaders({
       "Content-Type": "application/json",
     });
 

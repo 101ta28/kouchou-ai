@@ -18,7 +18,7 @@ export async function updateReportVisibility(slug: string, visibility: ReportVis
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/visibility`, {
       method: "PATCH",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({ visibility }),

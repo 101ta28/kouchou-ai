@@ -1,6 +1,6 @@
 "use server";
 
-import { getAdminApiKey } from "@/app/utils/admin-api-key";
+import { getAdminApiHeaders, getAdminApiKey } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 
 type DuplicateParams = {
@@ -44,10 +44,9 @@ export async function duplicateReport(sourceSlug: string, params: DuplicateParam
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${sourceSlug}/duplicate`, {
       method: "POST",
-      headers: {
-        "x-api-key": adminApiKey,
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify(body),
     });
 

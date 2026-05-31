@@ -18,7 +18,7 @@ type JsonDownloadResult =
 export async function jsonDownload(slug: string): Promise<JsonDownloadResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/json`, {
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
     });

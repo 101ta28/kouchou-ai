@@ -18,7 +18,7 @@ export async function fetchModelsFromServer(provider: Provider, address?: string
 
   const response = await fetch(`${getApiBaseUrl()}/admin/models?${params.toString()}`, {
     method: "GET",
-    headers: getAdminApiHeaders({
+    headers: await getAdminApiHeaders({
       "Content-Type": "application/json",
     }),
   });

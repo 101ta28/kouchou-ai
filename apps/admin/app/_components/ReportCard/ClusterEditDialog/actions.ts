@@ -17,7 +17,7 @@ type FetchClustersResult =
 export async function fetchClusters(reportSlug: string): Promise<FetchClustersResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-labels`, {
-      headers: getAdminApiHeaders(),
+      headers: await getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -44,7 +44,7 @@ export async function updateCluster(reportSlug: string, formData: FormData): Pro
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-label`, {
       method: "PATCH",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({ id, label, description }),

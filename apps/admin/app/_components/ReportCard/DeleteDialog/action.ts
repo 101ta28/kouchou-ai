@@ -9,7 +9,7 @@ export async function reportDelete(slug: string): Promise<DeleteResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}`, {
       method: "DELETE",
-      headers: getAdminApiHeaders({
+      headers: await getAdminApiHeaders({
         "Content-Type": "application/json",
       }),
     });
