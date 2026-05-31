@@ -111,6 +111,7 @@ API_BASEPATH=https://<api>.up.railway.app
 NEXT_PUBLIC_PUBLIC_API_KEY=<same-as-api-PUBLIC_API_KEY>
 
 NEXT_PUBLIC_SITE_URL=https://<public-viewer>.up.railway.app
+NEXT_PUBLIC_ADMIN_BASEPATH=https://<admin>.up.railway.app
 ```
 
 ## Supabase Auth URL 設定

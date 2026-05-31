@@ -6,8 +6,15 @@ import { ReporterContent } from "./ReporterContent";
 
 const imagePath = "/meta/reporter.png";
 
-async function hasReporterImage() {
-  const url = getApiUrl(imagePath);
+function getReporterImagePath(meta: Meta) {
+  if (!meta.organizationSlug) {
+    return imagePath;
+  }
+  return `${imagePath}?organization_slug=${encodeURIComponent(meta.organizationSlug)}`;
+}
+
+async function hasReporterImage(meta: Meta) {
+  const url = getApiUrl(getReporterImagePath(meta));
   if (!url) {
     return false;
   }
@@ -21,12 +28,15 @@ async function hasReporterImage() {
 }
 
 async function ReporterImage({
+  meta,
   reporterName,
 }: {
+  meta: Meta;
   reporterName: string;
 }) {
-  if (await hasReporterImage()) {
-    return <Image src={getImageFromServerSrc(imagePath)} alt={reporterName} maxW="150px" />;
+  const reporterImagePath = getReporterImagePath(meta);
+  if (await hasReporterImage(meta)) {
+    return <Image src={getImageFromServerSrc(reporterImagePath)} alt={reporterName} maxW="150px" />;
   }
   return null;
 }
@@ -34,7 +44,7 @@ async function ReporterImage({
 export async function Reporter({ meta }: { meta: Meta }) {
   return (
     <ReporterContent meta={meta}>
-      <ReporterImage reporterName={meta.reporter} />
+      <ReporterImage meta={meta} reporterName={meta.reporter} />
     </ReporterContent>
   );
 }

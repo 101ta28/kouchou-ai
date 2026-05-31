@@ -40,7 +40,22 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = be
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Bearer token required")
 
-    token = credentials.credentials
+    return _decode_current_user(credentials.credentials)
+
+
+async def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = bearer_security,
+) -> CurrentUser | None:
+    if not settings.AUTH_ENABLED:
+        return CurrentUser(user_id="local-development", claims={})
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+
+    return _decode_current_user(credentials.credentials)
+
+
+def _decode_current_user(token: str) -> CurrentUser:
     try:
         import jwt
 

@@ -8,4 +8,5 @@ class Metadata(SchemaBaseModel):
     privacyLink: str | None = None
     termsLink: str | None = None
     brandColor: str | None = None
+    organizationSlug: str | None = None
     isDefault: bool  # デフォルトのメタデータかどうかを示すフラグ

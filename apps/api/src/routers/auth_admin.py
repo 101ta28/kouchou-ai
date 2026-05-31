@@ -1,8 +1,12 @@
+import base64
+import binascii
+from pathlib import Path
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from src.auth import CurrentUser, get_current_user, verify_admin_api_key
+from src.auth import CurrentUser, get_current_user, verify_admin_api_key, verify_public_api_key
 from src.config import settings
 from src.services.sample_report import ensure_sample_report_for_organization
 
@@ -62,6 +66,21 @@ class CurrentUserAccessResponse(BaseModel):
     viewer_only: bool
 
 
+class CurrentUserOrganizationResponse(BaseModel):
+    id: str
+    slug: str
+    name: str
+    role: str
+
+
+class PublicCurrentUserContextResponse(BaseModel):
+    email: str | None = None
+    display_name: str | None = None
+    platform_owner: bool
+    can_create_reports: bool
+    organizations: list[CurrentUserOrganizationResponse]
+
+
 class ManageableOrganizationResponse(BaseModel):
     id: str
     slug: str
@@ -73,6 +92,35 @@ class ManageableOrganizationResponse(BaseModel):
 class UserManagementContextResponse(BaseModel):
     platform_owner: bool
     organizations: list[ManageableOrganizationResponse]
+
+
+class OrganizationMetadataImagePayload(BaseModel):
+    data: str
+
+
+class OrganizationMetadataRequest(BaseModel):
+    reporter: str | None = Field(default=None, max_length=120)
+    message: str | None = Field(default=None, max_length=2000)
+    web_link: str | None = Field(default=None, max_length=500)
+    privacy_link: str | None = Field(default=None, max_length=500)
+    terms_link: str | None = Field(default=None, max_length=500)
+    brand_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    icon_png: OrganizationMetadataImagePayload | None = None
+    ogp_png: OrganizationMetadataImagePayload | None = None
+    reporter_png: OrganizationMetadataImagePayload | None = None
+
+
+class OrganizationMetadataResponse(BaseModel):
+    organization_slug: str
+    reporter: str | None = None
+    message: str | None = None
+    web_link: str | None = None
+    privacy_link: str | None = None
+    terms_link: str | None = None
+    brand_color: str | None = None
+    has_icon_png: bool = False
+    has_ogp_png: bool = False
+    has_reporter_png: bool = False
 
 
 def _supabase_headers() -> dict[str, str]:
@@ -370,6 +418,120 @@ async def _get_current_user_roles(client: httpx.AsyncClient, current_user: Curre
     return sorted({membership["role"] for membership in memberships if membership.get("role")})
 
 
+async def _get_current_user_organizations(
+    client: httpx.AsyncClient,
+    current_user: CurrentUser,
+) -> list[CurrentUserOrganizationResponse]:
+    if not settings.AUTH_ENABLED:
+        return []
+
+    memberships = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organization_memberships",
+        params={"select": "organization_id,role", "user_id": f"eq.{current_user.user_id}"},
+    )
+    if not isinstance(memberships, list) or not memberships:
+        return []
+
+    organization_ids = [membership["organization_id"] for membership in memberships if membership.get("organization_id")]
+    if not organization_ids:
+        return []
+
+    organizations = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organizations",
+        params={"select": "id,slug,name", "id": f"in.({','.join(organization_ids)})"},
+    )
+    if not isinstance(organizations, list):
+        return []
+
+    organizations_by_id = {organization["id"]: organization for organization in organizations if organization.get("id")}
+    current_user_organizations: list[CurrentUserOrganizationResponse] = []
+    for membership in memberships:
+        organization = organizations_by_id.get(membership.get("organization_id"))
+        if not organization:
+            continue
+
+        current_user_organizations.append(
+            CurrentUserOrganizationResponse(
+                id=organization["id"],
+                slug=organization["slug"],
+                name=organization["name"],
+                role=membership.get("role", ""),
+            )
+        )
+
+    return sorted(current_user_organizations, key=lambda organization: organization.slug)
+
+
+def _organization_meta_dir(organization_slug: str) -> Path:
+    return settings.DATA_DIR / "organization_meta" / organization_slug
+
+
+def _decode_png_image(payload: OrganizationMetadataImagePayload) -> bytes:
+    image_data = payload.data
+    if "," in image_data:
+        prefix, image_data = image_data.split(",", 1)
+        if "image/png" not in prefix:
+            raise HTTPException(status_code=400, detail="Only PNG images are supported")
+
+    try:
+        decoded = base64.b64decode(image_data, validate=True)
+    except (binascii.Error, ValueError) as e:
+        raise HTTPException(status_code=400, detail="Invalid PNG image data") from e
+
+    if not decoded.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="Only PNG images are supported")
+    if len(decoded) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image size must be 2MB or smaller")
+    return decoded
+
+
+def _save_organization_image(
+    organization_slug: str,
+    filename: str,
+    payload: OrganizationMetadataImagePayload | None,
+) -> None:
+    if payload is None:
+        return
+
+    organization_meta_dir = _organization_meta_dir(organization_slug)
+    organization_meta_dir.mkdir(parents=True, exist_ok=True)
+    (organization_meta_dir / filename).write_bytes(_decode_png_image(payload))
+
+
+async def _get_organization_metadata(
+    client: httpx.AsyncClient,
+    organization: ManageableOrganizationResponse,
+) -> OrganizationMetadataResponse:
+    metadata_rows = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organization_metadata",
+        params={
+            "select": "reporter,message,web_link,privacy_link,terms_link,brand_color",
+            "organization_id": f"eq.{organization.id}",
+            "limit": "1",
+        },
+    )
+    metadata = metadata_rows[0] if isinstance(metadata_rows, list) and metadata_rows else {}
+    organization_meta_dir = _organization_meta_dir(organization.slug)
+    return OrganizationMetadataResponse(
+        organization_slug=organization.slug,
+        reporter=metadata.get("reporter"),
+        message=metadata.get("message"),
+        web_link=metadata.get("web_link"),
+        privacy_link=metadata.get("privacy_link"),
+        terms_link=metadata.get("terms_link"),
+        brand_color=metadata.get("brand_color"),
+        has_icon_png=(organization_meta_dir / "icon.png").exists(),
+        has_ogp_png=(organization_meta_dir / "ogp.png").exists(),
+        has_reporter_png=(organization_meta_dir / "reporter.png").exists(),
+    )
+
+
 @router.get("/admin/user-management/context", response_model=UserManagementContextResponse)
 async def get_user_management_context(
     api_key: str = Depends(verify_admin_api_key),
@@ -392,6 +554,75 @@ async def get_current_user_access(
             roles=roles,
             viewer_only=not platform_owner and roles == ["viewer"],
         )
+
+
+@router.get("/current-user/context", response_model=PublicCurrentUserContextResponse)
+async def get_public_current_user_context(
+    api_key: str = Depends(verify_public_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> PublicCurrentUserContextResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        platform_owner = await _is_platform_owner(client, current_user)
+        organizations = await _get_current_user_organizations(client, current_user)
+        can_create_reports = platform_owner or any(
+            organization.role in {"owner", "admin", "creator"} for organization in organizations
+        )
+        display_name = None
+        user_metadata = current_user.claims.get("user_metadata")
+        if isinstance(user_metadata, dict) and isinstance(user_metadata.get("display_name"), str):
+            display_name = user_metadata["display_name"]
+
+        return PublicCurrentUserContextResponse(
+            email=current_user.email,
+            display_name=display_name,
+            platform_owner=platform_owner,
+            can_create_reports=can_create_reports,
+            organizations=organizations,
+        )
+
+
+@router.get("/admin/organizations/{organization_slug}/metadata", response_model=OrganizationMetadataResponse)
+async def get_organization_metadata(
+    organization_slug: str,
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> OrganizationMetadataResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        organization = await _get_manageable_organization_for_slug(client, current_user, organization_slug)
+        return await _get_organization_metadata(client, organization)
+
+
+@router.put("/admin/organizations/{organization_slug}/metadata", response_model=OrganizationMetadataResponse)
+async def update_organization_metadata(
+    organization_slug: str,
+    payload: OrganizationMetadataRequest,
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> OrganizationMetadataResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        organization = await _get_manageable_organization_for_slug(client, current_user, organization_slug)
+        await _request_json(
+            client,
+            "POST",
+            "/rest/v1/organization_metadata",
+            json={
+                "organization_id": organization.id,
+                "reporter": payload.reporter,
+                "message": payload.message,
+                "web_link": payload.web_link,
+                "privacy_link": payload.privacy_link,
+                "terms_link": payload.terms_link,
+                "brand_color": payload.brand_color,
+            },
+            prefer="resolution=merge-duplicates",
+            params={"on_conflict": "organization_id"},
+        )
+
+        _save_organization_image(organization.slug, "icon.png", payload.icon_png)
+        _save_organization_image(organization.slug, "ogp.png", payload.ogp_png)
+        _save_organization_image(organization.slug, "reporter.png", payload.reporter_png)
+
+        return await _get_organization_metadata(client, organization)
 
 
 @router.get("/admin/users", response_model=ManagedUsersResponse)

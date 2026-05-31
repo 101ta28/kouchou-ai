@@ -6,6 +6,7 @@ export type Meta = {
   privacyLink?: string; // プライバシーポリシーURL
   termsLink?: string; // 利用規約URL
   brandColor?: string; // ブランドカラー
+  organizationSlug?: string; // 組織 slug
 };
 
 export enum ReportVisibility {

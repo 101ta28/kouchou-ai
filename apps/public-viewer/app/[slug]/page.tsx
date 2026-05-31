@@ -10,7 +10,7 @@ import type { Meta, Report, Result } from "@/type";
 import { ReportVisibility } from "@/type";
 import { Box, Separator } from "@chakra-ui/react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, unstable_rethrow } from "next/navigation";
 import { getApiBaseUrl } from "../utils/api";
 import { createStaticBuildFetchError, getStaticBuildReportSlugs, isStaticExportBuild } from "../utils/static-build";
 import { isAuthEnabled } from "../utils/supabase/env";
@@ -54,7 +54,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     const slug = (await params).slug;
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
-    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, {
+    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json?report_slug=${encodeURIComponent(slug)}`, {
+      headers: authHeaders,
       next: { tags: ["meta"] },
     });
     const resultResponse = await fetch(`${getApiBaseUrl()}/reports/${slug}`, {
@@ -69,13 +70,30 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       return {};
     }
 
-    const { getBasePath } = await import("@/app/utils/image-src");
+    const { getBasePath, getRelativeUrl } = await import("@/app/utils/image-src");
 
     const meta: Meta = await metaResponse.json();
     const result: Result = await resultResponse.json();
+    const organizationSlug = meta.organizationSlug;
     const metaData: Metadata = {
-      title: `${result.config.question} - ${meta.reporter}`,
+      title: result.config.question,
       description: `${result.overview}`,
+      openGraph: {
+        images: [
+          getRelativeUrl(
+            organizationSlug
+              ? `/meta/ogp.png?organization_slug=${encodeURIComponent(organizationSlug)}`
+              : `/meta/ogp.png?report_slug=${encodeURIComponent(slug)}`,
+          ),
+        ],
+      },
+      icons: {
+        icon: getRelativeUrl(
+          organizationSlug
+            ? `/meta/icon.png?organization_slug=${encodeURIComponent(organizationSlug)}`
+            : `/meta/icon.png?report_slug=${encodeURIComponent(slug)}`,
+        ),
+      },
     };
 
     // visibilityが"unlisted"の場合、noindexを設定
@@ -100,7 +118,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     }
 
     return metaData;
-  } catch (_e) {
+  } catch (error) {
+    unstable_rethrow(error);
     return {};
   }
 }
@@ -114,7 +133,8 @@ export default async function Page({ params }: PageProps) {
 
   try {
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
-    metaResponse = await fetch(`${apiUrl}/meta/metadata.json`, {
+    metaResponse = await fetch(`${apiUrl}/meta/metadata.json?report_slug=${encodeURIComponent(slug)}`, {
+      headers: authHeaders,
       next: { tags: ["meta"] },
     });
     resultResponse = await fetch(`${apiUrl}/reports/${slug}`, {

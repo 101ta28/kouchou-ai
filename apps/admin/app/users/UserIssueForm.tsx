@@ -52,6 +52,19 @@ type ManageableOrganization = {
   assignable_roles: Role[];
 };
 
+type OrganizationMetadata = {
+  organization_slug: string;
+  reporter: string | null;
+  message: string | null;
+  web_link: string | null;
+  privacy_link: string | null;
+  terms_link: string | null;
+  brand_color: string | null;
+  has_icon_png: boolean;
+  has_ogp_png: boolean;
+  has_reporter_png: boolean;
+};
+
 const roleDescriptions: Record<Role, string> = {
   owner: "組織の責任者。組織内の admin / creator / viewer を管理できます。",
   admin: "広聴AI オンラインの運用担当者。組織内の creator / viewer を招待できます。",
@@ -77,6 +90,18 @@ export function UserIssueForm() {
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [managedUsersOrganizationSlug, setManagedUsersOrganizationSlug] = useState("");
+  const [organizationMetadata, setOrganizationMetadata] = useState<OrganizationMetadata | null>(null);
+  const [metadataReporter, setMetadataReporter] = useState("");
+  const [metadataMessage, setMetadataMessage] = useState("");
+  const [metadataWebLink, setMetadataWebLink] = useState("");
+  const [metadataPrivacyLink, setMetadataPrivacyLink] = useState("");
+  const [metadataTermsLink, setMetadataTermsLink] = useState("");
+  const [metadataBrandColor, setMetadataBrandColor] = useState("#2577b1");
+  const [metadataIconFile, setMetadataIconFile] = useState<File | null>(null);
+  const [metadataOgpFile, setMetadataOgpFile] = useState<File | null>(null);
+  const [metadataReporterFile, setMetadataReporterFile] = useState<File | null>(null);
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
+  const [isMetadataSaving, setIsMetadataSaving] = useState(false);
 
   const selectedOrganization = manageableOrganizations.find((organization) => organization.slug === organizationSlug);
   const hasInvitePermission = isPlatformOwner || manageableOrganizations.length > 0;
@@ -96,6 +121,8 @@ export function UserIssueForm() {
         `ロール: ${createdUser.role}`,
       ].join("\n")
     : "";
+  const messageColor =
+    message && (message.includes("しました") || message.includes("コピー")) ? "green.700" : "red.600";
 
   const getAuthHeaders = useCallback(async () => {
     const supabase = createClient();
@@ -129,6 +156,44 @@ export function UserIssueForm() {
       setIsUsersLoading(false);
     }
   }, [getAuthHeaders, managedUsersOrganizationSlug]);
+
+  const applyOrganizationMetadata = useCallback((metadata: OrganizationMetadata | null) => {
+    setOrganizationMetadata(metadata);
+    setMetadataReporter(metadata?.reporter ?? "");
+    setMetadataMessage(metadata?.message ?? "");
+    setMetadataWebLink(metadata?.web_link ?? "");
+    setMetadataPrivacyLink(metadata?.privacy_link ?? "");
+    setMetadataTermsLink(metadata?.terms_link ?? "");
+    setMetadataBrandColor(metadata?.brand_color ?? "#2577b1");
+    setMetadataIconFile(null);
+    setMetadataOgpFile(null);
+    setMetadataReporterFile(null);
+  }, []);
+
+  const loadOrganizationMetadata = useCallback(
+    async (slug: string) => {
+      if (!slug) {
+        applyOrganizationMetadata(null);
+        return;
+      }
+
+      setIsMetadataLoading(true);
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/admin/organizations/${encodeURIComponent(slug)}/metadata`, {
+          headers: await getAuthHeaders(),
+        });
+        if (!response.ok) {
+          applyOrganizationMetadata(null);
+          return;
+        }
+
+        applyOrganizationMetadata(await response.json());
+      } finally {
+        setIsMetadataLoading(false);
+      }
+    },
+    [applyOrganizationMetadata, getAuthHeaders],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -184,6 +249,27 @@ export function UserIssueForm() {
       setRole(selectedOrganization.assignable_roles[0] ?? "viewer");
     }
   }, [role, selectedOrganization]);
+
+  useEffect(() => {
+    if (selectedOrganization) {
+      loadOrganizationMetadata(selectedOrganization.slug);
+    } else {
+      applyOrganizationMetadata(null);
+    }
+  }, [applyOrganizationMetadata, loadOrganizationMetadata, selectedOrganization]);
+
+  async function fileToData(file: File | null) {
+    if (!file) {
+      return undefined;
+    }
+
+    return new Promise<{ data: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ data: String(reader.result) });
+      reader.onerror = () => reject(new Error("画像を読み込めませんでした。"));
+      reader.readAsDataURL(file);
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -281,6 +367,50 @@ export function UserIssueForm() {
       setMessage("コピーできませんでした。下の内容を選択してコピーしてください。");
     } finally {
       setIsCopying(false);
+    }
+  }
+
+  async function handleSaveOrganizationMetadata() {
+    if (!selectedOrganization) {
+      setMessage("既存の組織を選択してください。新規組織は作成後に設定できます。");
+      return;
+    }
+
+    setIsMetadataSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/admin/organizations/${encodeURIComponent(selectedOrganization.slug)}/metadata`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(await getAuthHeaders()),
+          },
+          body: JSON.stringify({
+            reporter: metadataReporter || null,
+            message: metadataMessage || null,
+            web_link: metadataWebLink || null,
+            privacy_link: metadataPrivacyLink || null,
+            terms_link: metadataTermsLink || null,
+            brand_color: metadataBrandColor || null,
+            icon_png: await fileToData(metadataIconFile),
+            ogp_png: await fileToData(metadataOgpFile),
+            reporter_png: await fileToData(metadataReporterFile),
+          }),
+        },
+      );
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.detail || `組織表示設定を保存できませんでした。HTTP ${response.status}`);
+      }
+
+      applyOrganizationMetadata(await response.json());
+      setMessage("組織表示設定を保存しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "組織表示設定を保存できませんでした。");
+    } finally {
+      setIsMetadataSaving(false);
     }
   }
 
@@ -425,7 +555,118 @@ export function UserIssueForm() {
               </NativeSelect.Root>
               <Field.HelperText>{roleDescriptions[role]}</Field.HelperText>
             </Field.Root>
-            {message && <Text color={createdUser ? "green.700" : "red.600"}>{message}</Text>}
+            <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
+              <VStack align="stretch" gap="3">
+                <Box>
+                  <Heading fontSize="md">組織表示設定</Heading>
+                  <Text color="gray.600" fontSize="sm" mt="1">
+                    public-viewer のレポーター、アイコン、OGP画像を組織ごとに設定します。
+                  </Text>
+                </Box>
+                {!selectedOrganization ? (
+                  <Text color="gray.600" fontSize="sm">
+                    既存の組織を選択すると設定できます。新規組織はユーザー発行後に設定してください。
+                  </Text>
+                ) : (
+                  <>
+                    <Field.Root>
+                      <Field.Label>レポーター</Field.Label>
+                      <Input value={metadataReporter} onChange={(event) => setMetadataReporter(event.target.value)} />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>メッセージ</Field.Label>
+                      <Textarea
+                        value={metadataMessage}
+                        onChange={(event) => setMetadataMessage(event.target.value)}
+                        rows={4}
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>ブランドカラー</Field.Label>
+                      <Input
+                        type="color"
+                        value={metadataBrandColor}
+                        onChange={(event) => setMetadataBrandColor(event.target.value)}
+                        maxW="120px"
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>ウェブページURL</Field.Label>
+                      <Input
+                        type="url"
+                        value={metadataWebLink}
+                        onChange={(event) => setMetadataWebLink(event.target.value)}
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>プライバシーポリシーURL</Field.Label>
+                      <Input
+                        type="url"
+                        value={metadataPrivacyLink}
+                        onChange={(event) => setMetadataPrivacyLink(event.target.value)}
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>利用規約URL</Field.Label>
+                      <Input
+                        type="url"
+                        value={metadataTermsLink}
+                        onChange={(event) => setMetadataTermsLink(event.target.value)}
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>icon.png</Field.Label>
+                      <Input
+                        type="file"
+                        accept="image/png"
+                        onChange={(event) => setMetadataIconFile(event.target.files?.[0] ?? null)}
+                      />
+                      <Field.HelperText>
+                        {organizationMetadata?.has_icon_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
+                      </Field.HelperText>
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>ogp.png</Field.Label>
+                      <Input
+                        type="file"
+                        accept="image/png"
+                        onChange={(event) => setMetadataOgpFile(event.target.files?.[0] ?? null)}
+                      />
+                      <Field.HelperText>
+                        {organizationMetadata?.has_ogp_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
+                      </Field.HelperText>
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>reporter.png</Field.Label>
+                      <Input
+                        type="file"
+                        accept="image/png"
+                        onChange={(event) => setMetadataReporterFile(event.target.files?.[0] ?? null)}
+                      />
+                      <Field.HelperText>
+                        {organizationMetadata?.has_reporter_png
+                          ? "設定済み。新しいPNGを選ぶと上書きします。"
+                          : "未設定"}
+                      </Field.HelperText>
+                    </Field.Root>
+                    <HStack justify="flex-end">
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        onClick={() => loadOrganizationMetadata(selectedOrganization.slug)}
+                        disabled={isMetadataLoading || isMetadataSaving}
+                      >
+                        {isMetadataLoading ? "読み込み中" : "再読み込み"}
+                      </Button>
+                      <Button type="button" onClick={handleSaveOrganizationMetadata} disabled={isMetadataSaving}>
+                        {isMetadataSaving ? "保存中" : "表示設定を保存"}
+                      </Button>
+                    </HStack>
+                  </>
+                )}
+              </VStack>
+            </Box>
+            {message && <Text color={messageColor}>{message}</Text>}
             {createdUser && (
               <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
                 <VStack align="stretch" gap="3">

@@ -6,6 +6,7 @@ import type { Meta, Report } from "@/type";
 import { Box, Card, HStack, Heading, Image, Text, VStack } from "@chakra-ui/react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { getApiBaseUrl } from "./utils/api";
 import { isAuthEnabled } from "./utils/supabase/env";
 import { getAuthorizationHeader } from "./utils/supabase/server";
@@ -14,16 +15,28 @@ export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`);
+    const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
+    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, { headers: authHeaders });
     const meta: Meta = await metaResponse.json();
 
     const { getBasePath, getRelativeUrl } = await import("@/app/utils/image-src");
+    const ogpPath = meta.organizationSlug
+      ? `/meta/ogp.png?organization_slug=${encodeURIComponent(meta.organizationSlug)}`
+      : "/meta/ogp.png";
+    const iconPath = meta.organizationSlug
+      ? `/meta/icon.png?organization_slug=${encodeURIComponent(meta.organizationSlug)}`
+      : "/meta/icon.png";
 
     const metadata: Metadata = {
-      title: `${meta.reporter}のレポート一覧 - 広聴AI`,
+      title: {
+        absolute: "広聴AIオンライン",
+      },
       description: meta.message || "",
       openGraph: {
-        images: [getRelativeUrl("/meta/ogp.png")],
+        images: [getRelativeUrl(ogpPath)],
+      },
+      icons: {
+        icon: getRelativeUrl(iconPath),
       },
     };
 
@@ -35,10 +48,13 @@ export async function generateMetadata(): Promise<Metadata> {
     }
 
     return metadata;
-  } catch (_e) {
-    console.error("Failed to fetch metadata for generateMetadata:", _e);
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error("Failed to fetch metadata for generateMetadata:", error);
     return {
-      title: "広聴AI",
+      title: {
+        absolute: "広聴AIオンライン",
+      },
     };
   }
 }
@@ -46,7 +62,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function Page() {
   try {
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
-    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`);
+    const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, { headers: authHeaders });
     const reportsResponse = await fetch(`${getApiBaseUrl()}/reports`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
