@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # Next.jsのrevalidate API用の設定
     NEXT_PUBLIC_SITE_URL: str = Field(env="NEXT_PUBLIC_SITE_URL", default="http://localhost:3000")
+    ADMIN_SITE_URL: str = Field(env="ADMIN_SITE_URL", default="http://localhost:4000")
+    CORS_ALLOW_ORIGINS: str | None = Field(env="CORS_ALLOW_ORIGINS", default=None)
     REVALIDATE_SECRET: str = Field(env="REVALIDATE_SECRET", default="revalidate-secret")
     REVALIDATE_URL: str = Field(env="REVALIDATE_URL", default="http://public-viewer:3000/api/revalidate")
     BASE_DIR: Path = Path(__file__).parent.parent
@@ -49,6 +51,21 @@ class Settings(BaseSettings):
     @property
     def azure_blob_storage_account_url(self) -> str:
         return f"https://{self.AZURE_BLOB_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        configured_origins = [
+            origin.strip() for origin in (self.CORS_ALLOW_ORIGINS or "").split(",") if origin.strip()
+        ]
+        default_origins = [
+            self.NEXT_PUBLIC_SITE_URL,
+            self.ADMIN_SITE_URL,
+            "http://localhost:3000",
+            "http://localhost:4000",
+            "https://admin-production-6428.up.railway.app",
+            "https://public-viewer-production-93b1.up.railway.app",
+        ]
+        return list(dict.fromkeys([*configured_origins, *default_origins]))
 
     class Config:
         env_file = ".env"
