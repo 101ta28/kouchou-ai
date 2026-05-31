@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from src.auth import CurrentUser, get_current_user, verify_admin_api_key, verify_public_api_key
 from src.config import settings
 from src.services.sample_report import ensure_sample_report_for_organization
+from src.utils.logger import setup_logger
 
 router = APIRouter()
 current_user_dependency = Depends(get_current_user)
+slogger = setup_logger()
 
 
 class CreateUserRequest(BaseModel):
@@ -515,7 +517,14 @@ async def _create_user_with_client(
         params={"on_conflict": "organization_id,user_id"},
     )
     if manageable_organization is None and seed_sample_report:
-        await ensure_sample_report_for_organization(client, organization, current_user)
+        try:
+            await ensure_sample_report_for_organization(client, organization, current_user)
+        except Exception as e:
+            slogger.warning(
+                "Failed to seed sample report for organization",
+                organization_slug=organization_slug,
+                error=str(e),
+            )
 
     return CreatedUserResponse(
         user_id=user["id"],

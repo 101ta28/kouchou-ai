@@ -251,6 +251,35 @@ async def test_platform_owner_seeds_sample_report_for_existing_organization(monk
 
 
 @pytest.mark.asyncio
+async def test_create_user_succeeds_when_sample_report_seed_fails(monkeypatch, current_user, create_request):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return [{"user_id": "user-1"}]
+        if path == "/rest/v1/organizations":
+            return [{"id": "org-1", "slug": "org-a", "name": "Org A"}]
+        if path == "/auth/v1/admin/users" and method == "POST":
+            return {"id": "new-user", "email": "new-user@example.com"}
+        if path == "/rest/v1/profiles" and method == "POST":
+            return {}
+        if path == "/rest/v1/organization_memberships" and method == "POST":
+            return {}
+        raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+    async def ensure_sample_report(client, organization, current_user):
+        raise FileNotFoundError("sample source missing")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+    monkeypatch.setattr(auth_admin, "ensure_sample_report_for_organization", ensure_sample_report)
+
+    response = await auth_admin.create_user(create_request, current_user=current_user)
+
+    assert response.user_id == "new-user"
+    assert response.organization_slug == "org-a"
+
+
+@pytest.mark.asyncio
 async def test_sample_report_is_registered_for_new_organization(monkeypatch, tmp_path, current_user):
     report_dir = tmp_path / "outputs"
     source_dir = report_dir / sample_report.SAMPLE_SOURCE_SLUG

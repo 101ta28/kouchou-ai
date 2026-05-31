@@ -51,3 +51,5 @@ htmlcov/
 broadlistening/pipeline/inputs/*
 broadlistening/pipeline/configs/*
 broadlistening/pipeline/outputs/*
+!broadlistening/pipeline/outputs/example-hierarchical-polis/
+!broadlistening/pipeline/outputs/example-hierarchical-polis/**
