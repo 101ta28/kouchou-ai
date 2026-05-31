@@ -6,11 +6,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from src.auth import CurrentUser
 from src.routers import admin_report
 from src.routers.admin_report import router, verify_admin_api_key
+from src.schemas.admin_report import Comment, Prompt, ReportInput
 from src.schemas.report import Report, ReportStatus, ReportVisibility
 from src.services import report_duplicate, report_launcher, report_status, report_sync
 
@@ -167,6 +169,84 @@ class TestVerifyApiKey:
             mock_request.assert_called_once()
             _, kwargs = mock_request.call_args
             assert kwargs["user_api_key"] == "user-test-key"
+
+
+class TestCreateReportAccess:
+    @pytest.mark.asyncio
+    async def test_register_processing_report_uses_creators_organization(self, monkeypatch):
+        calls: list[dict] = []
+
+        async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+            calls.append({"method": method, "path": path, "json": json, "params": params, "prefer": prefer})
+            if path == "/rest/v1/organization_memberships":
+                return [{"organization_id": "org-1", "role": "creator"}]
+            if path == "/rest/v1/reports":
+                return None
+            raise AssertionError(f"Unexpected Supabase request: {method} {path}")
+
+        monkeypatch.setattr(admin_report, "request_supabase_json", request_json)
+        monkeypatch.setattr(admin_report.settings, "RETENTION_DAYS", 30)
+
+        report_input = ReportInput(
+            input="new-report",
+            question="New report",
+            intro="Intro",
+            cluster=[5],
+            model="gpt-4o-mini",
+            workers=1,
+            prompt=Prompt(extraction="ex", initial_labelling="il", merge_labelling="ml", overview="ov"),
+            comments=[Comment(id="1", comment="hello")],
+        )
+
+        await admin_report._register_processing_report(
+            object(),
+            report_input,
+            CurrentUser(user_id="user-1", email="creator@example.com", claims={}),
+        )
+
+        assert calls[0] == {
+            "method": "GET",
+            "path": "/rest/v1/organization_memberships",
+            "json": None,
+            "params": {
+                "select": "organization_id,role",
+                "user_id": "eq.user-1",
+                "role": "in.(owner,admin,creator)",
+            },
+            "prefer": None,
+        }
+        assert calls[1]["method"] == "POST"
+        assert calls[1]["path"] == "/rest/v1/reports"
+        assert calls[1]["prefer"] == "return=minimal"
+        assert calls[1]["json"] == {
+            "slug": "new-report",
+            "organization_id": "org-1",
+            "created_by": "user-1",
+            "title": "New report",
+            "status": "processing",
+            "visibility": "unlisted",
+            "artifact_path": "reports/new-report/hierarchical_result.json",
+            "retention_expires_at": calls[1]["json"]["retention_expires_at"],
+            "purge_status": "active",
+        }
+
+    @pytest.mark.asyncio
+    async def test_report_creation_requires_creator_membership(self, monkeypatch):
+        async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+            if path == "/rest/v1/organization_memberships":
+                return []
+            raise AssertionError(f"Unexpected Supabase request: {method} {path}")
+
+        monkeypatch.setattr(admin_report, "request_supabase_json", request_json)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await admin_report._get_report_creation_organization_id(
+                object(),
+                CurrentUser(user_id="viewer-1", email="viewer@example.com", claims={}),
+            )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.detail == "User cannot create reports"
 
 
 class TestDownloadReportJson:

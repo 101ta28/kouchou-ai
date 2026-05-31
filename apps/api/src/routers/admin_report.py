@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 
@@ -24,12 +25,12 @@ from src.repositories.cluster_repository import ClusterRepository
 from src.repositories.config_repository import ConfigRepository
 from src.schemas.admin_report import ReportDuplicateRequest, ReportInput, ReportVisibilityUpdate
 from src.schemas.cluster import ClusterResponse, ClusterUpdate
-from src.schemas.report import Report, ReportStatus
+from src.schemas.report import Report, ReportStatus, ReportVisibility
 from src.schemas.report_config import ReportConfigUpdate
 from src.schemas.visualization_config import ReportDisplayConfig
 from src.services.llm_models import get_models_by_provider
 from src.services.llm_pricing import LLMPricing
-from src.services.report_access import get_accessible_report_slugs
+from src.services.report_access import get_accessible_report_slugs, request_supabase_json
 from src.services.report_duplicate import duplicate_report
 from src.services.report_launcher import execute_aggregation, launch_report_generation
 from src.services.report_status import (
@@ -47,6 +48,54 @@ slogger = setup_logger()
 router = APIRouter()
 MAX_ERROR_LOG_CHARS = 4000
 current_user_dependency = Depends(get_current_user)
+
+
+async def _get_report_creation_organization_id(client: httpx.AsyncClient, current_user: CurrentUser) -> str:
+    memberships = await request_supabase_json(
+        client,
+        "GET",
+        "/rest/v1/organization_memberships",
+        params={
+            "select": "organization_id,role",
+            "user_id": f"eq.{current_user.user_id}",
+            "role": "in.(owner,admin,creator)",
+        },
+    )
+    if not isinstance(memberships, list) or not memberships:
+        raise HTTPException(status_code=403, detail="User cannot create reports")
+
+    organization_id = memberships[0].get("organization_id")
+    if not organization_id:
+        raise HTTPException(status_code=403, detail="User cannot create reports")
+    return organization_id
+
+
+async def _register_processing_report(
+    client: httpx.AsyncClient,
+    report: ReportInput,
+    current_user: CurrentUser,
+) -> None:
+    organization_id = await _get_report_creation_organization_id(client, current_user)
+    retention_expires_at = datetime.now(UTC) + timedelta(days=settings.RETENTION_DAYS)
+
+    await request_supabase_json(
+        client,
+        "POST",
+        "/rest/v1/reports",
+        json={
+            "slug": report.input,
+            "organization_id": organization_id,
+            "created_by": current_user.user_id,
+            "title": report.question,
+            "status": ReportStatus.PROCESSING.value,
+            "visibility": ReportVisibility.UNLISTED.value,
+            "artifact_path": f"reports/{report.input}/hierarchical_result.json",
+            "retention_expires_at": retention_expires_at.isoformat(),
+            "purge_status": "active",
+        },
+        prefer="return=minimal",
+    )
+
 
 def validate_path_within_report_dir(path) -> None:
     """Validate that resolved path is within REPORT_DIR.
@@ -82,9 +131,16 @@ async def get_reports(
 
 @router.post("/admin/reports", status_code=202)
 async def create_report(
-    report: ReportInput, request: Request, api_key: str = Depends(verify_admin_api_key)
+    report: ReportInput,
+    request: Request,
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
 ) -> ORJSONResponse:
     try:
+        if settings.AUTH_ENABLED:
+            async with httpx.AsyncClient(timeout=20) as client:
+                await _register_processing_report(client, report, current_user)
+
         user_api_key = request.headers.get("x-user-api-key")
         launch_report_generation(report, user_api_key)
         return ORJSONResponse(

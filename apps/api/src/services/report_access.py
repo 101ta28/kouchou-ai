@@ -29,7 +29,7 @@ async def request_supabase_json(
         headers["Prefer"] = prefer
 
     response = await client.request(method, f"{supabase_url}{path}", headers=headers, json=json, params=params)
-    if response.status_code == 204:
+    if response.status_code == 204 or not response.content:
         return None
     if response.status_code >= 400:
         raise RuntimeError(f"Supabase request failed: {response.text}")
