@@ -34,6 +34,18 @@ class CreatedUserResponse(BaseModel):
     role: str
 
 
+class ManageableOrganizationResponse(BaseModel):
+    id: str
+    slug: str
+    name: str
+    role: str
+    assignable_roles: list[str]
+
+
+class UserManagementContextResponse(BaseModel):
+    organizations: list[ManageableOrganizationResponse]
+
+
 def _supabase_headers() -> dict[str, str]:
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         raise HTTPException(status_code=500, detail="Supabase service role configuration is missing")
@@ -76,6 +88,14 @@ async def _request_json(
     return response.json()
 
 
+def _assignable_roles_for_manager(role: str) -> list[str]:
+    if role == "owner":
+        return ["viewer", "creator", "admin"]
+    if role == "admin":
+        return ["viewer", "creator"]
+    return []
+
+
 async def _get_or_create_organization(client: httpx.AsyncClient, payload: CreateUserRequest) -> dict:
     organizations = await _request_json(
         client,
@@ -101,23 +121,93 @@ async def _get_or_create_organization(client: httpx.AsyncClient, payload: Create
     return created[0]
 
 
-async def _require_user_manager(client: httpx.AsyncClient, current_user: CurrentUser) -> None:
+async def _get_manageable_organizations(
+    client: httpx.AsyncClient,
+    current_user: CurrentUser,
+) -> list[ManageableOrganizationResponse]:
     if not settings.AUTH_ENABLED:
-        return
+        return []
 
     memberships = await _request_json(
         client,
         "GET",
         "/rest/v1/organization_memberships",
         params={
-            "select": "organization_id",
+            "select": "organization_id,role",
             "user_id": f"eq.{current_user.user_id}",
             "role": "in.(owner,admin)",
-            "limit": "1",
         },
     )
     if not isinstance(memberships, list) or not memberships:
-        raise HTTPException(status_code=403, detail="User management requires owner or admin role")
+        return []
+
+    organization_ids = [membership["organization_id"] for membership in memberships if membership.get("organization_id")]
+    if not organization_ids:
+        return []
+
+    organizations = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organizations",
+        params={
+            "select": "id,slug,name",
+            "id": f"in.({','.join(organization_ids)})",
+        },
+    )
+    if not isinstance(organizations, list):
+        return []
+
+    organizations_by_id = {organization["id"]: organization for organization in organizations if organization.get("id")}
+    manageable_organizations: list[ManageableOrganizationResponse] = []
+    for membership in memberships:
+        organization = organizations_by_id.get(membership.get("organization_id"))
+        if not organization:
+            continue
+
+        role = membership.get("role", "")
+        manageable_organizations.append(
+            ManageableOrganizationResponse(
+                id=organization["id"],
+                slug=organization["slug"],
+                name=organization["name"],
+                role=role,
+                assignable_roles=_assignable_roles_for_manager(role),
+            )
+        )
+
+    return manageable_organizations
+
+
+async def _require_user_manager_for_payload(
+    client: httpx.AsyncClient,
+    current_user: CurrentUser,
+    payload: CreateUserRequest,
+) -> ManageableOrganizationResponse | None:
+    if not settings.AUTH_ENABLED:
+        return None
+
+    manageable_organizations = await _get_manageable_organizations(client, current_user)
+    target_organization = next(
+        (organization for organization in manageable_organizations if organization.slug == payload.organization_slug),
+        None,
+    )
+    if target_organization is None:
+        raise HTTPException(status_code=403, detail="Users can only be issued into organizations you manage")
+
+    if payload.role not in target_organization.assignable_roles:
+        raise HTTPException(status_code=403, detail="Requested role cannot be issued by your organization role")
+
+    return target_organization
+
+
+@router.get("/admin/user-management/context", response_model=UserManagementContextResponse)
+async def get_user_management_context(
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> UserManagementContextResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        organizations = await _get_manageable_organizations(client, current_user)
+    return UserManagementContextResponse(organizations=organizations)
 
 
 @router.post("/admin/users", response_model=CreatedUserResponse, status_code=201)
@@ -127,7 +217,7 @@ async def create_user(
     current_user: CurrentUser = current_user_dependency,
 ) -> CreatedUserResponse:
     async with httpx.AsyncClient(timeout=20) as client:
-        await _require_user_manager(client, current_user)
+        manageable_organization = await _require_user_manager_for_payload(client, current_user, payload)
 
         user = await _request_json(
             client,
@@ -143,8 +233,13 @@ async def create_user(
         if not isinstance(user, dict) or not user.get("id"):
             raise HTTPException(status_code=502, detail="Failed to create user")
 
-        organization = await _get_or_create_organization(client, payload)
-        organization_id = organization["id"]
+        if manageable_organization is None:
+            organization = await _get_or_create_organization(client, payload)
+            organization_id = organization["id"]
+            organization_slug = organization["slug"]
+        else:
+            organization_id = manageable_organization.id
+            organization_slug = manageable_organization.slug
 
         await _request_json(
             client,
@@ -171,6 +266,6 @@ async def create_user(
         user_id=user["id"],
         email=payload.email,
         organization_id=organization_id,
-        organization_slug=payload.organization_slug,
+        organization_slug=organization_slug,
         role=payload.role,
     )

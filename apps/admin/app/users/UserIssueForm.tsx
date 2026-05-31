@@ -4,9 +4,9 @@ import { getApiBaseUrl } from "@/app/utils/api";
 import { createClient } from "@/app/utils/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Box, Field, HStack, Heading, Input, NativeSelect, Text, Textarea, VStack } from "@chakra-ui/react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
-type Role = "owner" | "admin" | "creator" | "viewer";
+type Role = "admin" | "creator" | "viewer";
 
 type CreatedUser = {
   user_id: string;
@@ -22,6 +22,14 @@ type IssuedUser = CreatedUser & {
   login_url: string;
 };
 
+type ManageableOrganization = {
+  id: string;
+  slug: string;
+  name: string;
+  role: "owner" | "admin";
+  assignable_roles: Role[];
+};
+
 export function UserIssueForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,10 +37,14 @@ export function UserIssueForm() {
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [role, setRole] = useState<Role>("viewer");
+  const [manageableOrganizations, setManageableOrganizations] = useState<ManageableOrganization[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
+
+  const selectedOrganization = manageableOrganizations.find((organization) => organization.slug === organizationSlug);
+  const assignableRoles = selectedOrganization?.assignable_roles ?? (["viewer", "creator", "admin"] satisfies Role[]);
 
   const issuedUserText = createdUser
     ? [
@@ -46,6 +58,57 @@ export function UserIssueForm() {
         `ロール: ${createdUser.role}`,
       ].join("\n")
     : "";
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUserManagementContext() {
+      try {
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const response = await fetch(`${getApiBaseUrl()}/admin/user-management/context`, {
+          headers: {
+            "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const context: { organizations: ManageableOrganization[] } = await response.json();
+        if (!isMounted) {
+          return;
+        }
+
+        setManageableOrganizations(context.organizations);
+        if (context.organizations.length > 0) {
+          const firstOrganization = context.organizations[0];
+          setOrganizationSlug((current) => current || firstOrganization.slug);
+          setOrganizationName((current) => current || firstOrganization.name);
+          setRole(firstOrganization.assignable_roles[0] ?? "viewer");
+        }
+      } catch {
+        return;
+      }
+    }
+
+    loadUserManagementContext();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedOrganization && !selectedOrganization.assignable_roles.includes(role)) {
+      setRole(selectedOrganization.assignable_roles[0] ?? "viewer");
+    }
+  }, [role, selectedOrganization]);
 
   async function handleSubmit(event: FormEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -71,7 +134,7 @@ export function UserIssueForm() {
           password,
           display_name: displayName,
           organization_slug: organizationSlug,
-          organization_name: organizationName || null,
+          organization_name: selectedOrganization?.name || organizationName || null,
           role,
         }),
       });
@@ -86,7 +149,7 @@ export function UserIssueForm() {
         ...user,
         password,
         display_name: displayName,
-        organization_name: organizationName || organizationSlug,
+        organization_name: selectedOrganization?.name || organizationName || organizationSlug,
         login_url: `${window.location.origin}/login`,
       });
       setMessage("ユーザーを発行しました。");
@@ -148,13 +211,36 @@ export function UserIssueForm() {
         </Field.Root>
         <Field.Root required>
           <Field.Label>組織 slug</Field.Label>
-          <Input
-            value={organizationSlug}
-            onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase())}
-            pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
-          />
+          {manageableOrganizations.length > 0 ? (
+            <NativeSelect.Root>
+              <NativeSelect.Field
+                value={organizationSlug}
+                onChange={(event) => {
+                  const nextOrganization = manageableOrganizations.find(
+                    (organization) => organization.slug === event.target.value,
+                  );
+                  setOrganizationSlug(event.target.value);
+                  setOrganizationName(nextOrganization?.name ?? "");
+                  setRole(nextOrganization?.assignable_roles[0] ?? "viewer");
+                }}
+              >
+                {manageableOrganizations.map((organization) => (
+                  <option key={organization.id} value={organization.slug}>
+                    {organization.slug}
+                  </option>
+                ))}
+              </NativeSelect.Field>
+              <NativeSelect.Indicator />
+            </NativeSelect.Root>
+          ) : (
+            <Input
+              value={organizationSlug}
+              onChange={(event) => setOrganizationSlug(event.target.value.toLowerCase())}
+              pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+            />
+          )}
         </Field.Root>
-        <Field.Root>
+        <Field.Root disabled={manageableOrganizations.length > 0}>
           <Field.Label>組織名</Field.Label>
           <Input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
         </Field.Root>
@@ -162,10 +248,11 @@ export function UserIssueForm() {
           <Field.Label>ロール</Field.Label>
           <NativeSelect.Root>
             <NativeSelect.Field value={role} onChange={(event) => setRole(event.target.value as Role)}>
-              <option value="viewer">viewer</option>
-              <option value="creator">creator</option>
-              <option value="admin">admin</option>
-              <option value="owner">owner</option>
+              {assignableRoles.map((assignableRole) => (
+                <option key={assignableRole} value={assignableRole}>
+                  {assignableRole}
+                </option>
+              ))}
             </NativeSelect.Field>
             <NativeSelect.Indicator />
           </NativeSelect.Root>
@@ -186,7 +273,7 @@ export function UserIssueForm() {
             </VStack>
           </Box>
         )}
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading || assignableRoles.length === 0}>
           {isLoading ? "発行中" : "発行"}
         </Button>
       </VStack>
