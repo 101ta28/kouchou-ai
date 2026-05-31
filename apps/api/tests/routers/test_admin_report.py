@@ -249,6 +249,61 @@ class TestCreateReportAccess:
         assert exc_info.value.detail == "User cannot create reports"
 
 
+class TestDeleteReport:
+    @pytest.mark.asyncio
+    async def test_mark_report_deleted_in_supabase_updates_report_status(self, monkeypatch):
+        calls: list[dict] = []
+
+        async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+            calls.append({"method": method, "path": path, "json": json, "params": params, "prefer": prefer})
+            return None
+
+        monkeypatch.setattr(admin_report, "request_supabase_json", request_json)
+
+        await admin_report._mark_report_deleted_in_supabase(object(), "test-slug")
+
+        assert calls == [
+            {
+                "method": "PATCH",
+                "path": "/rest/v1/reports",
+                "json": {
+                    "status": "deleted",
+                    "updated_at": calls[0]["json"]["updated_at"],
+                },
+                "params": {"slug": "eq.test-slug"},
+                "prefer": "return=minimal",
+            }
+        ]
+
+    def test_delete_report_marks_local_and_supabase_status_deleted(
+        self,
+        client,
+        temp_status_file,
+        monkeypatch,
+    ):
+        calls: list[dict] = []
+
+        async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+            calls.append({"method": method, "path": path, "json": json, "params": params, "prefer": prefer})
+            return None
+
+        monkeypatch.setattr(admin_report.settings, "AUTH_ENABLED", True)
+        monkeypatch.setattr(admin_report, "request_supabase_json", request_json)
+
+        response = client.delete("/admin/reports/test-slug", headers={"x-api-key": "test-api-key"})
+
+        assert response.status_code == 200
+        assert response.json() == {"message": "Report test-slug marked as deleted"}
+        assert calls[0]["method"] == "PATCH"
+        assert calls[0]["path"] == "/rest/v1/reports"
+        assert calls[0]["json"]["status"] == "deleted"
+        assert calls[0]["params"] == {"slug": "eq.test-slug"}
+
+        with open(temp_status_file) as f:
+            status = json.load(f)
+        assert status["test-slug"]["status"] == "deleted"
+
+
 class TestDownloadReportJson:
     def test_download_report_json_success(self, client, tmp_path):
         report_dir = tmp_path / "reports"

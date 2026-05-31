@@ -97,6 +97,20 @@ async def _register_processing_report(
     )
 
 
+async def _mark_report_deleted_in_supabase(client: httpx.AsyncClient, slug: str) -> None:
+    await request_supabase_json(
+        client,
+        "PATCH",
+        "/rest/v1/reports",
+        json={
+            "status": ReportStatus.DELETED.value,
+            "updated_at": datetime.now(UTC).isoformat(),
+        },
+        params={"slug": f"eq.{slug}"},
+        prefer="return=minimal",
+    )
+
+
 def validate_path_within_report_dir(path) -> None:
     """Validate that resolved path is within REPORT_DIR.
 
@@ -306,7 +320,14 @@ async def get_current_step(slug: str) -> dict:
 async def delete_report(slug: str, api_key: str = Depends(verify_admin_api_key)) -> ORJSONResponse:
     validate_slug(slug)
     try:
+        reports = load_status_as_reports(include_deleted=True)
+        if not any(report.slug == slug for report in reports):
+            raise HTTPException(status_code=404, detail=f"slug {slug} not found in report status")
+        if settings.AUTH_ENABLED:
+            async with httpx.AsyncClient(timeout=20) as client:
+                await _mark_report_deleted_in_supabase(client, slug)
         set_status(slug, ReportStatus.DELETED.value)
+        invalidate_report_cache(slug)
         return ORJSONResponse(
             content={"message": f"Report {slug} marked as deleted"},
             headers={
@@ -320,6 +341,8 @@ async def delete_report(slug: str, api_key: str = Depends(verify_admin_api_key))
     except ConfigJSONParseError as e:
         slogger.error(f"ConfigJSONParseError: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
+    except HTTPException:
+        raise
     except Exception as e:
         slogger.error(f"Exception: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error") from e
