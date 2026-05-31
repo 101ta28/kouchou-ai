@@ -76,6 +76,7 @@ export function UserIssueForm() {
   const [message, setMessage] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [managedUsersOrganizationSlug, setManagedUsersOrganizationSlug] = useState("");
 
   const selectedOrganization = manageableOrganizations.find((organization) => organization.slug === organizationSlug);
   const hasInvitePermission = isPlatformOwner || manageableOrganizations.length > 0;
@@ -111,7 +112,12 @@ export function UserIssueForm() {
   const loadManagedUsers = useCallback(async () => {
     setIsUsersLoading(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/admin/users`, {
+      const searchParams = new URLSearchParams();
+      if (managedUsersOrganizationSlug) {
+        searchParams.set("organization_slug", managedUsersOrganizationSlug);
+      }
+      const queryString = searchParams.toString();
+      const response = await fetch(`${getApiBaseUrl()}/admin/users${queryString ? `?${queryString}` : ""}`, {
         headers: await getAuthHeaders(),
       });
       if (!response.ok) {
@@ -122,7 +128,7 @@ export function UserIssueForm() {
     } finally {
       setIsUsersLoading(false);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, managedUsersOrganizationSlug]);
 
   useEffect(() => {
     let isMounted = true;
@@ -161,12 +167,17 @@ export function UserIssueForm() {
     }
 
     loadUserManagementContext();
-    loadManagedUsers();
 
     return () => {
       isMounted = false;
     };
-  }, [getAuthHeaders, loadManagedUsers]);
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    if (isContextLoaded && hasInvitePermission) {
+      loadManagedUsers();
+    }
+  }, [hasInvitePermission, isContextLoaded, loadManagedUsers]);
 
   useEffect(() => {
     if (selectedOrganization && !selectedOrganization.assignable_roles.includes(role)) {
@@ -450,6 +461,25 @@ export function UserIssueForm() {
                   {isUsersLoading ? "更新中" : "更新"}
                 </Button>
               </HStack>
+              {isPlatformOwner && (
+                <Field.Root>
+                  <Field.Label>表示する組織</Field.Label>
+                  <NativeSelect.Root>
+                    <NativeSelect.Field
+                      value={managedUsersOrganizationSlug}
+                      onChange={(event) => setManagedUsersOrganizationSlug(event.target.value)}
+                    >
+                      <option value="">すべての組織</option>
+                      {manageableOrganizations.map((organization) => (
+                        <option key={organization.id} value={organization.slug}>
+                          {organization.slug} / {organization.name}
+                        </option>
+                      ))}
+                    </NativeSelect.Field>
+                    <NativeSelect.Indicator />
+                  </NativeSelect.Root>
+                </Field.Root>
+              )}
               {managedUsers.length === 0 ? (
                 <Text color="gray.600" fontSize="sm">
                   管理できるユーザーはまだありません。
