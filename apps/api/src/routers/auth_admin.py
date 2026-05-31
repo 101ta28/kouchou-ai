@@ -769,11 +769,10 @@ async def create_user(
         manageable_organization = await _require_user_manager_for_payload(client, current_user, payload)
 
         if manageable_organization is None:
-            organization, organization_created = await _get_or_create_organization(client, payload)
+            organization, _ = await _get_or_create_organization(client, payload)
             organization_id = organization["id"]
             organization_slug = organization["slug"]
         else:
-            organization_created = False
             organization_id = manageable_organization.id
             organization_slug = manageable_organization.slug
 
@@ -799,7 +798,7 @@ async def create_user(
             prefer="resolution=merge-duplicates",
             params={"on_conflict": "organization_id,user_id"},
         )
-        if manageable_organization is None and organization_created:
+        if manageable_organization is None:
             await ensure_sample_report_for_organization(client, organization, current_user)
 
     return CreatedUserResponse(

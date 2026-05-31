@@ -3,8 +3,11 @@
 import json
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
+from src.auth import CurrentUser
+from src.routers import report as report_router
 from src.schemas.report import ReportStatus, ReportVisibility
 
 
@@ -144,6 +147,79 @@ class TestReportEndpoint:
 
         assert response.status_code == 500
         assert response.json()["detail"] == "Invalid report data"
+
+    @pytest.mark.asyncio
+    async def test_accessible_database_reports_are_used_when_status_file_is_missing(self, monkeypatch, temp_report_dir):
+        slug = "org-a-sample-report"
+        report_dir = temp_report_dir / slug
+        report_dir.mkdir(parents=True)
+        (report_dir / "hierarchical_result.json").write_text(
+            json.dumps(
+                {
+                    "config": {"question": "サンプル"},
+                    "overview": "サンプルレポートの概要",
+                    "clusters": [],
+                    "arguments": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        async def is_platform_owner(client, current_user):
+            return False
+
+        async def request_supabase_json(client, method, path, *, json=None, params=None, prefer=None):
+            if path == "/rest/v1/organization_memberships":
+                return [{"organization_id": "org-1"}]
+            if path == "/rest/v1/reports":
+                return [
+                    {
+                        "slug": slug,
+                        "title": "Org A サンプルレポート",
+                        "status": "ready",
+                        "visibility": "public",
+                        "created_at": "2026-06-01T00:00:00+00:00",
+                    }
+                ]
+            raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+        monkeypatch.setattr(report_router.settings, "REPORT_DIR", temp_report_dir)
+        monkeypatch.setattr(report_router, "is_platform_owner", is_platform_owner)
+        monkeypatch.setattr(report_router, "request_supabase_json", request_supabase_json)
+
+        reports = await report_router._get_accessible_database_reports(
+            object(),
+            CurrentUser(user_id="user-1", email="viewer@example.com", claims={}),
+        )
+
+        assert len(reports) == 1
+        assert reports[0].slug == slug
+        assert reports[0].title == "Org A サンプルレポート"
+        assert reports[0].description == "サンプルレポートの概要"
+
+    def test_database_report_fallback_does_not_restore_deleted_status(self):
+        ready_report = report_router.Report(
+            slug="ready-report",
+            title="Ready report",
+            description="",
+            status=ReportStatus.READY,
+            visibility=ReportVisibility.PUBLIC,
+        )
+        deleted_fallback = report_router.Report(
+            slug="deleted-report",
+            title="Deleted report",
+            description="",
+            status=ReportStatus.READY,
+            visibility=ReportVisibility.PUBLIC,
+        )
+
+        reports = report_router._merge_reports(
+            [ready_report],
+            [deleted_fallback],
+            excluded_slugs={"deleted-report"},
+        )
+
+        assert [report.slug for report in reports] == ["ready-report"]
 
 
 class TestVisualizationConfigMerge:
