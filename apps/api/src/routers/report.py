@@ -1,10 +1,10 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
+from src.auth import verify_public_api_key
 from src.config import settings
 from src.schemas.public_report_result import PublicReportResult
 from src.schemas.report import Report, ReportStatus, ReportVisibility
@@ -15,9 +15,6 @@ from src.utils.slug_utils import validate_slug
 logger = logging.getLogger("uvicorn")
 
 router = APIRouter()
-
-api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-
 
 def _load_validated_report_result(slug: str) -> dict:
     report_path = settings.REPORT_DIR / slug / "hierarchical_result.json"
@@ -32,12 +29,6 @@ def _load_validated_report_result(slug: str) -> dict:
         raise HTTPException(status_code=500, detail="Invalid report data") from e
 
     return report_result
-
-
-async def verify_public_api_key(api_key: str = Security(api_key_header)):
-    if not api_key or api_key != settings.PUBLIC_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return api_key
 
 
 @router.get("/reports", dependencies=[Depends(verify_public_api_key)])

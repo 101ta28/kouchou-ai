@@ -15,6 +15,7 @@ StorageType = Literal["local", "azure_blob"]
 
 
 class Settings(BaseSettings):
+    AUTH_ENABLED: bool = Field(env="AUTH_ENABLED", default=False)
     ADMIN_API_KEY: str = Field(env="ADMIN_API_KEY")
     PUBLIC_API_KEY: str = Field(env="PUBLIC_API_KEY")
     OPENAI_API_KEY: str = Field(env="OPENAI_API_KEY")
@@ -36,6 +37,14 @@ class Settings(BaseSettings):
     STORAGE_TYPE: StorageType = Field(env="STORAGE_TYPE", default="local")
     AZURE_BLOB_STORAGE_ACCOUNT_NAME: str | None = Field(env="AZURE_BLOB_STORAGE_ACCOUNT_NAME", default=None)
     AZURE_BLOB_STORAGE_CONTAINER_NAME: str | None = Field(env="AZURE_BLOB_STORAGE_CONTAINER_NAME", default=None)
+
+    # Supabase Auth
+    SUPABASE_URL: str | None = Field(env="SUPABASE_URL", default=None)
+    SUPABASE_JWKS_URL: str | None = Field(env="SUPABASE_JWKS_URL", default=None)
+    SUPABASE_JWT_ISSUER: str | None = Field(env="SUPABASE_JWT_ISSUER", default=None)
+    SUPABASE_JWT_AUDIENCE: str = Field(env="SUPABASE_JWT_AUDIENCE", default="authenticated")
+    SUPABASE_SERVICE_ROLE_KEY: str | None = Field(env="SUPABASE_SERVICE_ROLE_KEY", default=None)
+    RETENTION_DAYS: int = Field(env="RETENTION_DAYS", default=30)
 
     @property
     def azure_blob_storage_account_url(self) -> str:

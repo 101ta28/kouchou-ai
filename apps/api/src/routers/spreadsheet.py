@@ -2,10 +2,10 @@ import os
 from typing import Any
 
 import polars as pl
-from fastapi import APIRouter, Depends, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from src.auth import verify_admin_api_key
 from src.config import settings
 from src.services.spreadsheet_service import delete_input_file, process_spreadsheet_url
 from src.utils.logger import setup_logger
@@ -13,27 +13,6 @@ from src.utils.validation import validate_filename
 
 slogger = setup_logger()
 router = APIRouter()
-
-api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-
-
-async def verify_admin_api_key(api_key: str = Security(api_key_header)) -> str:
-    """
-    管理者APIキーを検証する関数
-
-    Args:
-        api_key: リクエストヘッダーから取得したAPIキー
-
-    Returns:
-        str: 検証されたAPIキー
-
-    Raises:
-        HTTPException: APIキーが無効な場合
-    """
-    if not api_key or api_key != settings.ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return api_key
-
 
 class SpreadsheetInput(BaseModel):
     url: str

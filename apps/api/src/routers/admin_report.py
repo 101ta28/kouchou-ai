@@ -8,10 +8,10 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     google_exceptions = None
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, ORJSONResponse
-from fastapi.security.api_key import APIKeyHeader
 
+from src.auth import verify_admin_api_key
 from src.config import settings
 from src.core.exceptions import (
     ClusterCSVParseError,
@@ -44,15 +44,6 @@ from src.utils.slug_utils import validate_slug
 slogger = setup_logger()
 router = APIRouter()
 MAX_ERROR_LOG_CHARS = 4000
-
-api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-
-
-async def verify_admin_api_key(api_key: str = Security(api_key_header)):
-    if not api_key or api_key != settings.ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return api_key
-
 
 def validate_path_within_report_dir(path) -> None:
     """Validate that resolved path is within REPORT_DIR.
