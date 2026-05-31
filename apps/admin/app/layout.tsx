@@ -6,7 +6,11 @@ import ClientProvider from "./ClientProvider";
 import "./global.css";
 
 export const metadata: Metadata = {
-  title: "デジタル民主主義2030ブロードリスニング",
+  title: {
+    default: "広聴AIオンライン",
+    template: "%s - 広聴AIオンライン",
+  },
+  description: "広聴AIオンライン",
   robots: {
     index: false,
     follow: false,

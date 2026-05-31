@@ -1,11 +1,20 @@
 import { getImageFromServerSrc } from "@/app/utils/image-src";
 import { Provider } from "@/components/ui/provider";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import type { Metadata } from "next";
 import "./global.css";
 
 const enableGA =
   !!process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID &&
   (process.env.ENVIRONMENT === "production" || process.env.NODE_ENV === "production");
+
+export const metadata: Metadata = {
+  title: {
+    default: "広聴AIオンライン",
+    template: "%s - 広聴AIオンライン",
+  },
+  description: "広聴AIオンライン",
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

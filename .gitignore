@@ -11,6 +11,7 @@ docker-compose.override.y*ml
 out
 lefthook-local.yml
 dist
+*.tsbuildinfo
 .tmp/
 apps/public-viewer/out-root/
 apps/public-viewer/out-subdir/
