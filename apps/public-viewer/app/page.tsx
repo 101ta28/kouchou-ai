@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { getApiBaseUrl } from "./utils/api";
+import { ensureRequestBoundRendering } from "./utils/dynamic-rendering";
 import { isAuthEnabled } from "./utils/supabase/env";
 import { getAuthorizationHeader } from "./utils/supabase/server";
 
@@ -15,6 +16,7 @@ export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
+    await ensureRequestBoundRendering();
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, { headers: authHeaders });
     const meta: Meta = await metaResponse.json();
@@ -61,6 +63,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Page() {
   try {
+    await ensureRequestBoundRendering();
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, { headers: authHeaders });
     const reportsResponse = await fetch(`${getApiBaseUrl()}/reports`, {

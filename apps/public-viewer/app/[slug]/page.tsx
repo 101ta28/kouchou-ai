@@ -12,6 +12,7 @@ import { Box, Separator } from "@chakra-ui/react";
 import type { Metadata } from "next";
 import { notFound, unstable_rethrow } from "next/navigation";
 import { getApiBaseUrl } from "../utils/api";
+import { ensureRequestBoundRendering } from "../utils/dynamic-rendering";
 import { createStaticBuildFetchError, getStaticBuildReportSlugs, isStaticExportBuild } from "../utils/static-build";
 import { isAuthEnabled } from "../utils/supabase/env";
 import { getAuthorizationHeader } from "../utils/supabase/server";
@@ -26,6 +27,10 @@ type PageProps = {
 export const revalidate = 300;
 
 export async function generateStaticParams() {
+  if (isAuthEnabled() && !isStaticExportBuild()) {
+    return [];
+  }
+
   let reports: Report[];
 
   try {
@@ -52,6 +57,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   try {
+    await ensureRequestBoundRendering();
     const slug = (await params).slug;
     const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json?report_slug=${encodeURIComponent(slug)}`, {
@@ -125,6 +131,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function Page({ params }: PageProps) {
+  await ensureRequestBoundRendering();
+
   const slug = (await params).slug;
   const apiUrl = getApiBaseUrl();
 
