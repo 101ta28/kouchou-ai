@@ -1,6 +1,6 @@
 {
-  "reporter": "広聴AI Multiuser Admin",
-  "message": "複数ユーザー環境で作成・共有された広聴AIレポートです。",
+  "reporter": "広聴AIオンライン",
+  "message": "広聴AIオンラインで作成・共有されたレポートです。",
   "webLink": "/",
   "privacyLink": "/",
   "termsLink": null,
