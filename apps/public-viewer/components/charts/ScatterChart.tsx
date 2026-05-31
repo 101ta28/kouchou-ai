@@ -320,7 +320,7 @@ export function ScatterChart({
 
     // フィルター対象のアイテム（前面に描画）
     const matchingData =
-      matching.length > 0
+      filteredArgumentIds && matching.length > 0
         ? {
             x: matching.map((arg) => arg.x),
             y: matching.map((arg) => arg.y),
@@ -419,16 +419,13 @@ export function ScatterChart({
     return result;
   });
 
-  // 凸包トレースの生成（scatterAll / scatterDetail モード用）
-  // NOTE: hull trace は意図的に type: "scatter"（SVG）を使用している。
-  // hoveron: "fills" はSVGレイヤーのみでサポートされており、
-  // scattergl（WebGL）では動作しない。また Plotly の z-order により
-  // SVGトレースはWebGLトレースの背面に自動配置されるため、scatter点の
-  // 下に凸包が描画される。この SVG/WebGL 混在は意図的な設計である。
+  // 凸包の生成（scatterAll / scatterDetail モード用）
+  // data trace は scattergl に統一し、凸包は layout.shapes で描画する。
+  // SVG scatter trace と scattergl trace を混在させると、環境によってWebGL初期化が不安定になる。
   // Gift wrapping は O(nh) のため、入力が変わらない限り再計算しないよう useMemo でメモ化する。
   // clusterDataSets / clusterColorMap は毎レンダリング再生成されるので、
   // 上流の安定した参照（targetClusters / argumentList / filteredArgumentIds）を deps とする。
-  const hullTraces = useMemo(() => {
+  const hullShapes = useMemo(() => {
     if (!showConvexHull) return [];
     return targetClusters.flatMap((cluster, index) => {
       const clusterArguments = argumentList.filter((arg) => arg.cluster_ids.includes(cluster.id));
@@ -436,31 +433,20 @@ export function ScatterChart({
       const hull = convexHull(clusterArguments.map((arg) => [arg.x, arg.y]));
       if (hull.length < 3) return [];
       const color = softColors[index % softColors.length];
+      const path = [...hull, hull[0]]
+        .map((point, pointIndex) => `${pointIndex === 0 ? "M" : "L"} ${point[0]} ${point[1]}`)
+        .join(" ");
       return [
         {
-          x: [...hull.map((p) => p[0]), hull[0][0]],
-          y: [...hull.map((p) => p[1]), hull[0][1]],
-          mode: "lines",
-          fill: "toself",
+          type: "path",
+          path,
           fillcolor: `${color}33`,
           line: { color, width: 1.5 },
-          type: "scatter",
-          hoveron: "fills",
-          hoverinfo: "text",
-          text: cluster.label,
-          hoverlabel: {
-            bgcolor: color,
-            bordercolor: color,
-            font: { color: "white", size: 13 },
-          },
-          showlegend: false,
+          layer: "below",
         },
       ];
     });
   }, [showConvexHull, targetClusters, argumentList]);
-
-  // 凸包を最背面に挿入（scatter点の下に描画）
-  const allPlotData = [...hullTraces, ...plotData];
 
   // アノテーションの設定
   const annotations: Partial<Annotations>[] = showClusterLabels
@@ -496,7 +482,7 @@ export function ScatterChart({
     <Box width="100%" height="100%" display="flex" flexDirection="column">
       <Box position="relative" flex="1" ref={chartWrapperRef}>
         <ChartCore
-          data={allPlotData as unknown as Data[]}
+          data={plotData as unknown as Data[]}
           layout={
             {
               uirevision: "scatter", // ズーム・パン状態をデータ更新後も保持する
@@ -514,6 +500,7 @@ export function ScatterChart({
               hovermode: "closest",
               dragmode: "pan", // ドラッグによる移動（パン）を有効化
               annotations,
+              shapes: hullShapes,
               showlegend: false,
             } as Partial<Layout>
           }
@@ -523,6 +510,7 @@ export function ScatterChart({
             responsive: true,
             displayModeBar: "hover", // 操作時にツールバーを表示
             scrollZoom: true, // マウスホイールによるズームを有効化
+            plotGlPixelRatio: 1, // 高DPI環境でのWebGLキャンバス肥大化を抑える
             locale: "ja",
           }}
           onUpdate={onUpdate}
