@@ -12,10 +12,12 @@ import {
   Heading,
   Input,
   NativeSelect,
+  Tabs,
   Text,
   Textarea,
   VStack,
 } from "@chakra-ui/react";
+import Papa from "papaparse";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 type Role = "owner" | "admin" | "creator" | "viewer";
@@ -32,6 +34,22 @@ type IssuedUser = CreatedUser & {
   display_name: string;
   organization_name: string;
   login_url: string;
+};
+
+type BatchUserInput = {
+  email: string;
+  password: string;
+  display_name: string;
+  organization_slug: string;
+  organization_name: string | null;
+  role: Role;
+};
+
+type BatchCreateUserResult = {
+  row: number;
+  success: boolean;
+  user: CreatedUser | null;
+  error: string | null;
 };
 
 type ManagedUser = {
@@ -72,6 +90,19 @@ const roleDescriptions: Record<Role, string> = {
   viewer: "共有されたレポートを閲覧する利用者です。",
 };
 
+const csvHeaders = ["email", "password", "display_name", "organization_slug", "organization_name", "role"];
+
+const generateTemporaryPassword = () => {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!_-";
+  const values = new Uint32Array(14);
+  window.crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+};
+
+const normalizeCsvValue = (value: unknown) => String(value ?? "").trim();
+
+const isRole = (value: string): value is Role => ["owner", "admin", "creator", "viewer"].includes(value);
+
 export function UserIssueForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -88,6 +119,11 @@ export function UserIssueForm() {
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
+  const [batchUsers, setBatchUsers] = useState<BatchUserInput[]>([]);
+  const [batchResults, setBatchResults] = useState<BatchCreateUserResult[]>([]);
+  const [batchFileName, setBatchFileName] = useState("");
+  const [isBatchLoading, setIsBatchLoading] = useState(false);
+  const [isBatchCopying, setIsBatchCopying] = useState(false);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [managedUsersOrganizationSlug, setManagedUsersOrganizationSlug] = useState("");
   const [organizationMetadata, setOrganizationMetadata] = useState<OrganizationMetadata | null>(null);
@@ -121,6 +157,33 @@ export function UserIssueForm() {
         `ロール: ${createdUser.role}`,
       ].join("\n")
     : "";
+  const batchIssuedUserText =
+    batchResults.length > 0
+      ? batchResults
+          .flatMap((result) => {
+            if (!result.success || !result.user) {
+              return [];
+            }
+
+            const source = batchUsers[result.row - 1];
+            const loginUrl = typeof window === "undefined" ? "/login" : `${window.location.origin}/login`;
+            return [
+              [
+                "ユーザーを発行しました。",
+                `ログインURL: ${loginUrl}`,
+                `メールアドレス: ${result.user.email}`,
+                `初期パスワード: ${source?.password ?? ""}`,
+                `表示名: ${source?.display_name ?? ""}`,
+                `組織 slug: ${result.user.organization_slug}`,
+                `組織名: ${source?.organization_name || result.user.organization_slug}`,
+                `ロール: ${result.user.role}`,
+              ].join("\n"),
+            ];
+          })
+          .join("\n\n")
+      : "";
+  const batchSuccessCount = batchResults.filter((result) => result.success).length;
+  const batchFailureCount = batchResults.filter((result) => !result.success).length;
   const messageColor =
     message && (message.includes("しました") || message.includes("コピー")) ? "green.700" : "red.600";
 
@@ -370,6 +433,142 @@ export function UserIssueForm() {
     }
   }
 
+  async function handleBatchCsvFile(file: File | null) {
+    setBatchResults([]);
+    setBatchUsers([]);
+    setBatchFileName(file?.name ?? "");
+    setMessage(null);
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: "greedy",
+      });
+      if (parsed.errors.length > 0) {
+        throw new Error(parsed.errors[0].message);
+      }
+
+      const users = parsed.data
+        .map((row) => {
+          const emailValue = normalizeCsvValue(row.email).toLowerCase();
+          const roleValue = normalizeCsvValue(row.role) || role;
+          const displayNameValue = normalizeCsvValue(row.display_name) || emailValue.split("@")[0] || "user";
+          const organizationSlugValue = normalizeCsvValue(row.organization_slug || organizationSlug).toLowerCase();
+          const organizationNameValue = normalizeCsvValue(
+            row.organization_name || organizationName || selectedOrganization?.name,
+          );
+
+          if (!emailValue) {
+            return null;
+          }
+          if (!isRole(roleValue)) {
+            throw new Error(`CSVの role は owner / admin / creator / viewer のいずれかにしてください: ${roleValue}`);
+          }
+
+          return {
+            email: emailValue,
+            password: normalizeCsvValue(row.password) || generateTemporaryPassword(),
+            display_name: displayNameValue,
+            organization_slug: organizationSlugValue,
+            organization_name: organizationNameValue || null,
+            role: roleValue,
+          };
+        })
+        .filter((user): user is BatchUserInput => user !== null);
+
+      if (users.length === 0) {
+        throw new Error("CSVに発行対象のユーザーがありません。");
+      }
+      if (users.length > 100) {
+        throw new Error("CSVで一度に発行できるユーザーは100件までです。");
+      }
+
+      setBatchUsers(users);
+      setMessage(`${users.length}件のユーザーを読み込みました。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "CSVを読み込めませんでした。");
+    }
+  }
+
+  async function handleBatchSubmit() {
+    if (batchUsers.length === 0) {
+      setMessage("CSVを選択してください。");
+      return;
+    }
+
+    setIsBatchLoading(true);
+    setBatchResults([]);
+    setCreatedUser(null);
+    setMessage(null);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/admin/users/batch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await getAuthHeaders()),
+        },
+        body: JSON.stringify({ users: batchUsers }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.detail || `ユーザーを一括発行できませんでした。HTTP ${response.status}`);
+      }
+
+      const data: { results: BatchCreateUserResult[] } = await response.json();
+      setBatchResults(data.results);
+      const successCount = data.results.filter((result) => result.success).length;
+      const failureCount = data.results.length - successCount;
+      setMessage(`一括発行が完了しました。成功 ${successCount}件 / 失敗 ${failureCount}件`);
+      await loadManagedUsers();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ユーザーを一括発行できませんでした。");
+    } finally {
+      setIsBatchLoading(false);
+    }
+  }
+
+  async function handleCopyBatchIssuedUsers() {
+    if (!batchIssuedUserText) {
+      return;
+    }
+
+    setIsBatchCopying(true);
+    try {
+      await navigator.clipboard.writeText(batchIssuedUserText);
+      setMessage("一括発行情報をコピーしました。");
+    } catch {
+      setMessage("コピーできませんでした。下の内容を選択してコピーしてください。");
+    } finally {
+      setIsBatchCopying(false);
+    }
+  }
+
+  function handleDownloadCsvTemplate() {
+    const example = [
+      csvHeaders.join(","),
+      [
+        "sample_viewer@example.com",
+        "",
+        "sample_viewer",
+        organizationSlug || "test-org",
+        organizationName || "test-organization",
+        "viewer",
+      ].join(","),
+    ].join("\n");
+    const blob = new Blob([example], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "kouchou-ai-users-template.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleSaveOrganizationMetadata() {
     if (!selectedOrganization) {
       setMessage("既存の組織を選択してください。新規組織は作成後に設定できます。");
@@ -415,15 +614,7 @@ export function UserIssueForm() {
   }
 
   return (
-    <Box
-      as="form"
-      onSubmit={handleSubmit}
-      bg="white"
-      borderWidth="1px"
-      borderColor="border.weak"
-      borderRadius="8px"
-      p="8"
-    >
+    <Box bg="white" borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="8">
       <VStack gap="5" align="stretch">
         <Box>
           <HStack gap="3" align="center" mb="2">
@@ -466,300 +657,391 @@ export function UserIssueForm() {
         )}
         {isContextLoaded && hasInvitePermission && (
           <>
-            <Field.Root required>
-              <Field.Label>メールアドレス</Field.Label>
-              <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="off" />
-            </Field.Root>
-            <Field.Root required>
-              <Field.Label>初期パスワード</Field.Label>
-              <Input
-                type="password"
-                minLength={8}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="new-password"
-              />
-            </Field.Root>
-            <Field.Root required>
-              <Field.Label>表示名</Field.Label>
-              <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-            </Field.Root>
-            <Field.Root required>
-              <Field.Label>組織 slug</Field.Label>
-              {manageableOrganizations.length > 0 && !isPlatformOwner ? (
-                <NativeSelect.Root>
-                  <NativeSelect.Field
-                    value={organizationSlug}
-                    onChange={(event) => {
-                      const nextOrganization = manageableOrganizations.find(
-                        (organization) => organization.slug === event.target.value,
-                      );
-                      setOrganizationSlug(event.target.value);
-                      setOrganizationName(nextOrganization?.name ?? "");
-                      setRole(nextOrganization?.assignable_roles[0] ?? "viewer");
-                    }}
-                  >
-                    {manageableOrganizations.map((organization) => (
-                      <option key={organization.id} value={organization.slug}>
-                        {organization.slug}
-                      </option>
-                    ))}
-                  </NativeSelect.Field>
-                  <NativeSelect.Indicator />
-                </NativeSelect.Root>
-              ) : (
-                <>
-                  <Input
-                    value={organizationSlug}
-                    onChange={(event) => {
-                      const nextSlug = event.target.value.toLowerCase();
-                      const nextOrganization = manageableOrganizations.find(
-                        (organization) => organization.slug === nextSlug,
-                      );
-                      setOrganizationSlug(nextSlug);
-                      if (nextOrganization) {
-                        setOrganizationName(nextOrganization.name);
-                        setRole(nextOrganization.assignable_roles[0] ?? "viewer");
-                      }
-                    }}
-                    pattern="[a-z0-9](([a-z0-9]|-)*[a-z0-9])?"
-                    list={isPlatformOwner ? "manageable-organizations" : undefined}
-                  />
-                  {isPlatformOwner && (
-                    <datalist id="manageable-organizations">
-                      {manageableOrganizations.map((organization) => (
-                        <option key={organization.id} value={organization.slug}>
-                          {organization.name}
-                        </option>
-                      ))}
-                    </datalist>
-                  )}
-                </>
-              )}
-            </Field.Root>
-            <Field.Root disabled={manageableOrganizations.length > 0 && !isPlatformOwner}>
-              <Field.Label>組織名</Field.Label>
-              <Input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
-            </Field.Root>
-            <Field.Root required>
-              <Field.Label>ロール</Field.Label>
-              <NativeSelect.Root>
-                <NativeSelect.Field value={role} onChange={(event) => setRole(event.target.value as Role)}>
-                  {assignableRoles.map((assignableRole) => (
-                    <option key={assignableRole} value={assignableRole}>
-                      {assignableRole}
-                    </option>
-                  ))}
-                </NativeSelect.Field>
-                <NativeSelect.Indicator />
-              </NativeSelect.Root>
-              <Field.HelperText>{roleDescriptions[role]}</Field.HelperText>
-            </Field.Root>
-            <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
-              <VStack align="stretch" gap="3">
-                <Box>
-                  <Heading fontSize="md">組織表示設定</Heading>
-                  <Text color="gray.600" fontSize="sm" mt="1">
-                    public-viewer のレポーター、アイコン、OGP画像を組織ごとに設定します。
-                  </Text>
-                </Box>
-                {!selectedOrganization ? (
-                  <Text color="gray.600" fontSize="sm">
-                    既存の組織を選択すると設定できます。新規組織はユーザー発行後に設定してください。
-                  </Text>
-                ) : (
-                  <>
-                    <Field.Root>
-                      <Field.Label>レポーター</Field.Label>
-                      <Input value={metadataReporter} onChange={(event) => setMetadataReporter(event.target.value)} />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>メッセージ</Field.Label>
-                      <Textarea
-                        value={metadataMessage}
-                        onChange={(event) => setMetadataMessage(event.target.value)}
-                        rows={4}
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>ブランドカラー</Field.Label>
-                      <Input
-                        type="color"
-                        value={metadataBrandColor}
-                        onChange={(event) => setMetadataBrandColor(event.target.value)}
-                        maxW="120px"
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>ウェブページURL</Field.Label>
-                      <Input
-                        type="url"
-                        value={metadataWebLink}
-                        onChange={(event) => setMetadataWebLink(event.target.value)}
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>プライバシーポリシーURL</Field.Label>
-                      <Input
-                        type="url"
-                        value={metadataPrivacyLink}
-                        onChange={(event) => setMetadataPrivacyLink(event.target.value)}
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>利用規約URL</Field.Label>
-                      <Input
-                        type="url"
-                        value={metadataTermsLink}
-                        onChange={(event) => setMetadataTermsLink(event.target.value)}
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>icon.png</Field.Label>
-                      <Input
-                        type="file"
-                        accept="image/png"
-                        onChange={(event) => setMetadataIconFile(event.target.files?.[0] ?? null)}
-                      />
-                      <Field.HelperText>
-                        {organizationMetadata?.has_icon_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
-                      </Field.HelperText>
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>ogp.png</Field.Label>
-                      <Input
-                        type="file"
-                        accept="image/png"
-                        onChange={(event) => setMetadataOgpFile(event.target.files?.[0] ?? null)}
-                      />
-                      <Field.HelperText>
-                        {organizationMetadata?.has_ogp_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
-                      </Field.HelperText>
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>reporter.png</Field.Label>
-                      <Input
-                        type="file"
-                        accept="image/png"
-                        onChange={(event) => setMetadataReporterFile(event.target.files?.[0] ?? null)}
-                      />
-                      <Field.HelperText>
-                        {organizationMetadata?.has_reporter_png
-                          ? "設定済み。新しいPNGを選ぶと上書きします。"
-                          : "未設定"}
-                      </Field.HelperText>
-                    </Field.Root>
-                    <HStack justify="flex-end">
-                      <Button
-                        type="button"
-                        variant="tertiary"
-                        onClick={() => loadOrganizationMetadata(selectedOrganization.slug)}
-                        disabled={isMetadataLoading || isMetadataSaving}
-                      >
-                        {isMetadataLoading ? "読み込み中" : "再読み込み"}
-                      </Button>
-                      <Button type="button" onClick={handleSaveOrganizationMetadata} disabled={isMetadataSaving}>
-                        {isMetadataSaving ? "保存中" : "表示設定を保存"}
-                      </Button>
-                    </HStack>
-                  </>
-                )}
-              </VStack>
-            </Box>
             {message && <Text color={messageColor}>{message}</Text>}
-            {createdUser && (
-              <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
+            <Tabs.Root defaultValue="single" variant="line">
+              <Tabs.List overflowX="auto">
+                <Tabs.Trigger value="single">ユーザー発行</Tabs.Trigger>
+                <Tabs.Trigger value="batch">CSV一括発行</Tabs.Trigger>
+                <Tabs.Trigger value="metadata">組織表示設定</Tabs.Trigger>
+                <Tabs.Trigger value="users">発行済みユーザー</Tabs.Trigger>
+                <Tabs.Indicator />
+              </Tabs.List>
+              <Tabs.Content value="single" pt="5">
+                <Box as="form" onSubmit={handleSubmit}>
+                  <VStack align="stretch" gap="4">
+                    <Field.Root required>
+                      <Field.Label>メールアドレス</Field.Label>
+                      <Input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        autoComplete="off"
+                      />
+                    </Field.Root>
+                    <Field.Root required>
+                      <Field.Label>初期パスワード</Field.Label>
+                      <Input
+                        type="password"
+                        minLength={8}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </Field.Root>
+                    <Field.Root required>
+                      <Field.Label>表示名</Field.Label>
+                      <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+                    </Field.Root>
+                    <Field.Root required>
+                      <Field.Label>組織 slug</Field.Label>
+                      {manageableOrganizations.length > 0 && !isPlatformOwner ? (
+                        <NativeSelect.Root>
+                          <NativeSelect.Field
+                            value={organizationSlug}
+                            onChange={(event) => {
+                              const nextOrganization = manageableOrganizations.find(
+                                (organization) => organization.slug === event.target.value,
+                              );
+                              setOrganizationSlug(event.target.value);
+                              setOrganizationName(nextOrganization?.name ?? "");
+                              setRole(nextOrganization?.assignable_roles[0] ?? "viewer");
+                            }}
+                          >
+                            {manageableOrganizations.map((organization) => (
+                              <option key={organization.id} value={organization.slug}>
+                                {organization.slug}
+                              </option>
+                            ))}
+                          </NativeSelect.Field>
+                          <NativeSelect.Indicator />
+                        </NativeSelect.Root>
+                      ) : (
+                        <>
+                          <Input
+                            value={organizationSlug}
+                            onChange={(event) => {
+                              const nextSlug = event.target.value.toLowerCase();
+                              const nextOrganization = manageableOrganizations.find(
+                                (organization) => organization.slug === nextSlug,
+                              );
+                              setOrganizationSlug(nextSlug);
+                              if (nextOrganization) {
+                                setOrganizationName(nextOrganization.name);
+                                setRole(nextOrganization.assignable_roles[0] ?? "viewer");
+                              }
+                            }}
+                            pattern="[a-z0-9](([a-z0-9]|-)*[a-z0-9])?"
+                            list={isPlatformOwner ? "manageable-organizations" : undefined}
+                          />
+                          {isPlatformOwner && (
+                            <datalist id="manageable-organizations">
+                              {manageableOrganizations.map((organization) => (
+                                <option key={organization.id} value={organization.slug}>
+                                  {organization.name}
+                                </option>
+                              ))}
+                            </datalist>
+                          )}
+                        </>
+                      )}
+                    </Field.Root>
+                    <Field.Root disabled={manageableOrganizations.length > 0 && !isPlatformOwner}>
+                      <Field.Label>組織名</Field.Label>
+                      <Input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
+                    </Field.Root>
+                    <Field.Root required>
+                      <Field.Label>ロール</Field.Label>
+                      <NativeSelect.Root>
+                        <NativeSelect.Field value={role} onChange={(event) => setRole(event.target.value as Role)}>
+                          {assignableRoles.map((assignableRole) => (
+                            <option key={assignableRole} value={assignableRole}>
+                              {assignableRole}
+                            </option>
+                          ))}
+                        </NativeSelect.Field>
+                        <NativeSelect.Indicator />
+                      </NativeSelect.Root>
+                      <Field.HelperText>{roleDescriptions[role]}</Field.HelperText>
+                    </Field.Root>
+                    {createdUser && (
+                      <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
+                        <VStack align="stretch" gap="3">
+                          <HStack justify="space-between" gap="3" align="center">
+                            <Text color="gray.700" fontSize="sm" fontWeight="bold">
+                              発行情報
+                            </Text>
+                            <Button type="button" onClick={handleCopyIssuedUser} disabled={isCopying}>
+                              {isCopying ? "コピー中" : "コピー"}
+                            </Button>
+                          </HStack>
+                          <Textarea value={issuedUserText} readOnly rows={8} fontFamily="mono" fontSize="sm" />
+                        </VStack>
+                      </Box>
+                    )}
+                    {createdUser ? (
+                      <Button type="button" variant="tertiary" onClick={handleIssueAnotherUser}>
+                        続けて発行
+                      </Button>
+                    ) : (
+                      <Button type="submit" disabled={isLoading || assignableRoles.length === 0}>
+                        {isLoading ? "発行中" : "発行"}
+                      </Button>
+                    )}
+                  </VStack>
+                </Box>
+              </Tabs.Content>
+              <Tabs.Content value="batch" pt="5">
                 <VStack align="stretch" gap="3">
-                  <HStack justify="space-between" gap="3" align="center">
-                    <Text color="gray.700" fontSize="sm" fontWeight="bold">
-                      発行情報
+                  <Box>
+                    <Heading fontSize="md">CSV一括発行</Heading>
+                    <Text color="gray.600" fontSize="sm" mt="1">
+                      CSVから複数ユーザーをまとめて発行します。列は {csvHeaders.join(", ")} を使用してください。
+                      password が空の場合は一時パスワードを自動生成します。
                     </Text>
-                    <Button type="button" onClick={handleCopyIssuedUser} disabled={isCopying}>
-                      {isCopying ? "コピー中" : "コピー"}
+                  </Box>
+                  <HStack gap="3" align="flex-end" flexWrap="wrap">
+                    <Field.Root maxW="520px">
+                      <Field.Label>CSVファイル</Field.Label>
+                      <Input
+                        type="file"
+                        accept=".csv,text/csv"
+                        onChange={(event) => handleBatchCsvFile(event.target.files?.[0] ?? null)}
+                      />
+                      <Field.HelperText>
+                        {batchFileName
+                          ? `${batchFileName} / ${batchUsers.length}件を読み込み済み`
+                          : "email は必須です。組織やロールが空の場合は現在の入力値を使います。"}
+                      </Field.HelperText>
+                    </Field.Root>
+                    <Button type="button" variant="tertiary" onClick={handleDownloadCsvTemplate}>
+                      テンプレート
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleBatchSubmit}
+                      disabled={isBatchLoading || batchUsers.length === 0 || assignableRoles.length === 0}
+                    >
+                      {isBatchLoading ? "一括発行中" : "一括発行"}
                     </Button>
                   </HStack>
-                  <Textarea value={issuedUserText} readOnly rows={8} fontFamily="mono" fontSize="sm" />
+                  {batchUsers.length > 0 && (
+                    <Text color="gray.700" fontSize="sm">
+                      読み込み済み: {batchUsers.length}件
+                    </Text>
+                  )}
+                  {batchResults.length > 0 && (
+                    <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
+                      <VStack align="stretch" gap="3">
+                        <HStack justify="space-between" gap="3" align="center">
+                          <Text color="gray.700" fontSize="sm" fontWeight="bold">
+                            一括発行結果: 成功 {batchSuccessCount}件 / 失敗 {batchFailureCount}件
+                          </Text>
+                          <Button
+                            type="button"
+                            onClick={handleCopyBatchIssuedUsers}
+                            disabled={isBatchCopying || !batchIssuedUserText}
+                          >
+                            {isBatchCopying ? "コピー中" : "成功分をコピー"}
+                          </Button>
+                        </HStack>
+                        {batchIssuedUserText && (
+                          <Textarea value={batchIssuedUserText} readOnly rows={8} fontFamily="mono" fontSize="sm" />
+                        )}
+                        {batchFailureCount > 0 && (
+                          <VStack align="stretch" gap="1">
+                            {batchResults
+                              .filter((result) => !result.success)
+                              .map((result) => (
+                                <Text key={result.row} color="red.600" fontSize="sm">
+                                  {result.row}行目: {result.error || "発行できませんでした。"}
+                                </Text>
+                              ))}
+                          </VStack>
+                        )}
+                      </VStack>
+                    </Box>
+                  )}
                 </VStack>
-              </Box>
-            )}
-            {createdUser ? (
-              <Button type="button" variant="tertiary" onClick={handleIssueAnotherUser}>
-                続けて発行
-              </Button>
-            ) : (
-              <Button type="submit" disabled={isLoading || assignableRoles.length === 0}>
-                {isLoading ? "発行中" : "発行"}
-              </Button>
-            )}
-          </>
-        )}
-        {isContextLoaded && hasInvitePermission && (
-          <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
-            <VStack align="stretch" gap="3">
-              <HStack justify="space-between" gap="3" align="center">
-                <Heading fontSize="md">発行済みユーザー</Heading>
-                <Button type="button" variant="tertiary" onClick={loadManagedUsers} disabled={isUsersLoading}>
-                  {isUsersLoading ? "更新中" : "更新"}
-                </Button>
-              </HStack>
-              {isPlatformOwner && (
-                <Field.Root>
-                  <Field.Label>表示する組織</Field.Label>
-                  <NativeSelect.Root>
-                    <NativeSelect.Field
-                      value={managedUsersOrganizationSlug}
-                      onChange={(event) => setManagedUsersOrganizationSlug(event.target.value)}
-                    >
-                      <option value="">すべての組織</option>
-                      {manageableOrganizations.map((organization) => (
-                        <option key={organization.id} value={organization.slug}>
-                          {organization.slug} / {organization.name}
-                        </option>
+              </Tabs.Content>
+              <Tabs.Content value="metadata" pt="5">
+                <VStack align="stretch" gap="3">
+                  <Box>
+                    <Heading fontSize="md">組織表示設定</Heading>
+                    <Text color="gray.600" fontSize="sm" mt="1">
+                      public-viewer のレポーター、アイコン、OGP画像を組織ごとに設定します。
+                    </Text>
+                  </Box>
+                  {!selectedOrganization ? (
+                    <Text color="gray.600" fontSize="sm">
+                      既存の組織を選択すると設定できます。新規組織はユーザー発行後に設定してください。
+                    </Text>
+                  ) : (
+                    <>
+                      <Field.Root>
+                        <Field.Label>レポーター</Field.Label>
+                        <Input value={metadataReporter} onChange={(event) => setMetadataReporter(event.target.value)} />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>メッセージ</Field.Label>
+                        <Textarea
+                          value={metadataMessage}
+                          onChange={(event) => setMetadataMessage(event.target.value)}
+                          rows={4}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>ブランドカラー</Field.Label>
+                        <Input
+                          type="color"
+                          value={metadataBrandColor}
+                          onChange={(event) => setMetadataBrandColor(event.target.value)}
+                          maxW="120px"
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>ウェブページURL</Field.Label>
+                        <Input
+                          type="url"
+                          value={metadataWebLink}
+                          onChange={(event) => setMetadataWebLink(event.target.value)}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>プライバシーポリシーURL</Field.Label>
+                        <Input
+                          type="url"
+                          value={metadataPrivacyLink}
+                          onChange={(event) => setMetadataPrivacyLink(event.target.value)}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>利用規約URL</Field.Label>
+                        <Input
+                          type="url"
+                          value={metadataTermsLink}
+                          onChange={(event) => setMetadataTermsLink(event.target.value)}
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>icon.png</Field.Label>
+                        <Input
+                          type="file"
+                          accept="image/png"
+                          onChange={(event) => setMetadataIconFile(event.target.files?.[0] ?? null)}
+                        />
+                        <Field.HelperText>
+                          {organizationMetadata?.has_icon_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
+                        </Field.HelperText>
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>ogp.png</Field.Label>
+                        <Input
+                          type="file"
+                          accept="image/png"
+                          onChange={(event) => setMetadataOgpFile(event.target.files?.[0] ?? null)}
+                        />
+                        <Field.HelperText>
+                          {organizationMetadata?.has_ogp_png ? "設定済み。新しいPNGを選ぶと上書きします。" : "未設定"}
+                        </Field.HelperText>
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label>reporter.png</Field.Label>
+                        <Input
+                          type="file"
+                          accept="image/png"
+                          onChange={(event) => setMetadataReporterFile(event.target.files?.[0] ?? null)}
+                        />
+                        <Field.HelperText>
+                          {organizationMetadata?.has_reporter_png
+                            ? "設定済み。新しいPNGを選ぶと上書きします。"
+                            : "未設定"}
+                        </Field.HelperText>
+                      </Field.Root>
+                      <HStack justify="flex-end">
+                        <Button
+                          type="button"
+                          variant="tertiary"
+                          onClick={() => loadOrganizationMetadata(selectedOrganization.slug)}
+                          disabled={isMetadataLoading || isMetadataSaving}
+                        >
+                          {isMetadataLoading ? "読み込み中" : "再読み込み"}
+                        </Button>
+                        <Button type="button" onClick={handleSaveOrganizationMetadata} disabled={isMetadataSaving}>
+                          {isMetadataSaving ? "保存中" : "表示設定を保存"}
+                        </Button>
+                      </HStack>
+                    </>
+                  )}
+                </VStack>
+              </Tabs.Content>
+              <Tabs.Content value="users" pt="5">
+                <VStack align="stretch" gap="3">
+                  <HStack justify="space-between" gap="3" align="center">
+                    <Heading fontSize="md">発行済みユーザー</Heading>
+                    <Button type="button" variant="tertiary" onClick={loadManagedUsers} disabled={isUsersLoading}>
+                      {isUsersLoading ? "更新中" : "更新"}
+                    </Button>
+                  </HStack>
+                  {isPlatformOwner && (
+                    <Field.Root>
+                      <Field.Label>表示する組織</Field.Label>
+                      <NativeSelect.Root>
+                        <NativeSelect.Field
+                          value={managedUsersOrganizationSlug}
+                          onChange={(event) => setManagedUsersOrganizationSlug(event.target.value)}
+                        >
+                          <option value="">すべての組織</option>
+                          {manageableOrganizations.map((organization) => (
+                            <option key={organization.id} value={organization.slug}>
+                              {organization.slug} / {organization.name}
+                            </option>
+                          ))}
+                        </NativeSelect.Field>
+                        <NativeSelect.Indicator />
+                      </NativeSelect.Root>
+                    </Field.Root>
+                  )}
+                  {managedUsers.length === 0 ? (
+                    <Text color="gray.600" fontSize="sm">
+                      管理できるユーザーはまだありません。
+                    </Text>
+                  ) : (
+                    <VStack align="stretch" gap="2">
+                      {managedUsers.map((user) => (
+                        <HStack
+                          key={`${user.organization_slug}:${user.user_id}`}
+                          justify="space-between"
+                          gap="3"
+                          borderWidth="1px"
+                          borderColor="border.weak"
+                          borderRadius="8px"
+                          p="3"
+                        >
+                          <Box minW="0">
+                            <Text fontSize="sm" fontWeight="bold">
+                              {user.email || user.user_id}
+                            </Text>
+                            <Text color="gray.600" fontSize="xs">
+                              {user.display_name || "表示名なし"} / {user.organization_slug} / {user.role}
+                            </Text>
+                          </Box>
+                          <Button
+                            type="button"
+                            variant="tertiary"
+                            aria-label={`${user.email || user.user_id} を削除`}
+                            disabled={!user.can_delete || deletingUserId === user.user_id}
+                            onClick={() => handleDeleteUser(user)}
+                          >
+                            {deletingUserId === user.user_id ? "削除中" : "削除"}
+                          </Button>
+                        </HStack>
                       ))}
-                    </NativeSelect.Field>
-                    <NativeSelect.Indicator />
-                  </NativeSelect.Root>
-                </Field.Root>
-              )}
-              {managedUsers.length === 0 ? (
-                <Text color="gray.600" fontSize="sm">
-                  管理できるユーザーはまだありません。
-                </Text>
-              ) : (
-                <VStack align="stretch" gap="2">
-                  {managedUsers.map((user) => (
-                    <HStack
-                      key={`${user.organization_slug}:${user.user_id}`}
-                      justify="space-between"
-                      gap="3"
-                      borderWidth="1px"
-                      borderColor="border.weak"
-                      borderRadius="8px"
-                      p="3"
-                    >
-                      <Box minW="0">
-                        <Text fontSize="sm" fontWeight="bold">
-                          {user.email || user.user_id}
-                        </Text>
-                        <Text color="gray.600" fontSize="xs">
-                          {user.display_name || "表示名なし"} / {user.organization_slug} / {user.role}
-                        </Text>
-                      </Box>
-                      <Button
-                        type="button"
-                        variant="tertiary"
-                        aria-label={`${user.email || user.user_id} を削除`}
-                        disabled={!user.can_delete || deletingUserId === user.user_id}
-                        onClick={() => handleDeleteUser(user)}
-                      >
-                        {deletingUserId === user.user_id ? "削除中" : "削除"}
-                      </Button>
-                    </HStack>
-                  ))}
+                    </VStack>
+                  )}
                 </VStack>
-              )}
-            </VStack>
-          </Box>
+              </Tabs.Content>
+            </Tabs.Root>
+          </>
         )}
       </VStack>
     </Box>

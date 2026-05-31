@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.auth import CurrentUser, get_current_user, verify_admin_api_key, verify_public_api_key
 from src.config import settings
@@ -37,6 +37,21 @@ class CreatedUserResponse(BaseModel):
     organization_id: str
     organization_slug: str
     role: str
+
+
+class BatchCreateUsersRequest(BaseModel):
+    users: list[dict] = Field(min_length=1, max_length=100)
+
+
+class BatchCreateUserResult(BaseModel):
+    row: int
+    success: bool
+    user: CreatedUserResponse | None = None
+    error: str | None = None
+
+
+class BatchCreateUsersResponse(BaseModel):
+    results: list[BatchCreateUserResult]
 
 
 class ManagedUserResponse(BaseModel):
@@ -455,6 +470,62 @@ async def _create_or_reactivate_auth_user(client: httpx.AsyncClient, payload: Cr
     return user
 
 
+async def _create_user_with_client(
+    client: httpx.AsyncClient,
+    payload: CreateUserRequest,
+    current_user: CurrentUser,
+    *,
+    seed_sample_report: bool = True,
+) -> CreatedUserResponse:
+    manageable_organization = await _require_user_manager_for_payload(client, current_user, payload)
+
+    if manageable_organization is None:
+        organization, _ = await _get_or_create_organization(client, payload)
+        organization_id = organization["id"]
+        organization_slug = organization["slug"]
+    else:
+        organization = {
+            "id": manageable_organization.id,
+            "slug": manageable_organization.slug,
+            "name": manageable_organization.name,
+        }
+        organization_id = manageable_organization.id
+        organization_slug = manageable_organization.slug
+
+    user = await _create_or_reactivate_auth_user(client, payload)
+
+    await _request_json(
+        client,
+        "POST",
+        "/rest/v1/profiles",
+        json={"user_id": user["id"], "display_name": payload.display_name},
+        prefer="resolution=merge-duplicates",
+        params={"on_conflict": "user_id"},
+    )
+    await _request_json(
+        client,
+        "POST",
+        "/rest/v1/organization_memberships",
+        json={
+            "organization_id": organization_id,
+            "user_id": user["id"],
+            "role": payload.role,
+        },
+        prefer="resolution=merge-duplicates",
+        params={"on_conflict": "organization_id,user_id"},
+    )
+    if manageable_organization is None and seed_sample_report:
+        await ensure_sample_report_for_organization(client, organization, current_user)
+
+    return CreatedUserResponse(
+        user_id=user["id"],
+        email=payload.email,
+        organization_id=organization_id,
+        organization_slug=organization_slug,
+        role=payload.role,
+    )
+
+
 async def _is_target_platform_owner(client: httpx.AsyncClient, user_id: str) -> bool:
     platform_owners = await _request_json(
         client,
@@ -766,48 +837,41 @@ async def create_user(
     current_user: CurrentUser = current_user_dependency,
 ) -> CreatedUserResponse:
     async with httpx.AsyncClient(timeout=20) as client:
-        manageable_organization = await _require_user_manager_for_payload(client, current_user, payload)
+        return await _create_user_with_client(client, payload, current_user)
 
-        if manageable_organization is None:
-            organization, _ = await _get_or_create_organization(client, payload)
-            organization_id = organization["id"]
-            organization_slug = organization["slug"]
-        else:
-            organization_id = manageable_organization.id
-            organization_slug = manageable_organization.slug
 
-        user = await _create_or_reactivate_auth_user(client, payload)
+@router.post("/admin/users/batch", response_model=BatchCreateUsersResponse)
+async def create_users_batch(
+    payload: BatchCreateUsersRequest,
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> BatchCreateUsersResponse:
+    results: list[BatchCreateUserResult] = []
+    seeded_organization_slugs: set[str] = set()
 
-        await _request_json(
-            client,
-            "POST",
-            "/rest/v1/profiles",
-            json={"user_id": user["id"], "display_name": payload.display_name},
-            prefer="resolution=merge-duplicates",
-            params={"on_conflict": "user_id"},
-        )
-        await _request_json(
-            client,
-            "POST",
-            "/rest/v1/organization_memberships",
-            json={
-                "organization_id": organization_id,
-                "user_id": user["id"],
-                "role": payload.role,
-            },
-            prefer="resolution=merge-duplicates",
-            params={"on_conflict": "organization_id,user_id"},
-        )
-        if manageable_organization is None:
-            await ensure_sample_report_for_organization(client, organization, current_user)
+    async with httpx.AsyncClient(timeout=20) as client:
+        for index, raw_user in enumerate(payload.users, start=1):
+            try:
+                user_payload = CreateUserRequest.model_validate(raw_user)
+                result = await _create_user_with_client(
+                    client,
+                    user_payload,
+                    current_user,
+                    seed_sample_report=user_payload.organization_slug not in seeded_organization_slugs,
+                )
+                seeded_organization_slugs.add(result.organization_slug)
+                results.append(BatchCreateUserResult(row=index, success=True, user=result))
+            except ValidationError as e:
+                message = "; ".join(
+                    f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}" for error in e.errors()
+                )
+                results.append(BatchCreateUserResult(row=index, success=False, error=message))
+            except HTTPException as e:
+                results.append(BatchCreateUserResult(row=index, success=False, error=str(e.detail)))
+            except Exception as e:
+                results.append(BatchCreateUserResult(row=index, success=False, error=str(e)))
 
-    return CreatedUserResponse(
-        user_id=user["id"],
-        email=payload.email,
-        organization_id=organization_id,
-        organization_slug=organization_slug,
-        role=payload.role,
-    )
+    return BatchCreateUsersResponse(results=results)
 
 
 @router.delete("/admin/users/{user_id}", response_model=DeletedUserResponse)

@@ -179,6 +179,47 @@ async def test_create_user_keeps_existing_member_as_conflict(monkeypatch, curren
 
 
 @pytest.mark.asyncio
+async def test_create_users_batch_returns_row_results(monkeypatch, current_user, create_request):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+    membership_calls: list[dict] = []
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return []
+        if path == "/rest/v1/organization_memberships" and method == "GET":
+            if params.get("select") == "organization_id,role" and params.get("user_id") == "eq.user-1":
+                return [{"organization_id": "org-1", "role": "admin"}]
+        if path == "/rest/v1/organizations":
+            return [{"id": "org-1", "slug": "org-a", "name": "Org A"}]
+        if path == "/auth/v1/admin/users" and method == "POST":
+            return {"id": f"user-{json['email'].split('@')[0]}", "email": json["email"]}
+        if path == "/rest/v1/profiles" and method == "POST":
+            return {}
+        if path == "/rest/v1/organization_memberships" and method == "POST":
+            membership_calls.append(json)
+            return {}
+        raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+    payload = auth_admin.BatchCreateUsersRequest(
+        users=[
+            create_request.model_dump(),
+            {**create_request.model_dump(), "email": "owner@example.com", "role": "owner"},
+        ]
+    )
+
+    response = await auth_admin.create_users_batch(payload, current_user=current_user)
+
+    assert len(response.results) == 2
+    assert response.results[0].success is True
+    assert response.results[0].user is not None
+    assert response.results[0].user.email == "new-user@example.com"
+    assert response.results[1].success is False
+    assert response.results[1].error == "Requested role cannot be issued by your organization role"
+    assert membership_calls == [{"organization_id": "org-1", "user_id": "user-new-user", "role": "viewer"}]
+
+
+@pytest.mark.asyncio
 async def test_platform_owner_seeds_sample_report_for_existing_organization(monkeypatch, current_user, create_request):
     monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
     sample_calls: list[dict] = []
