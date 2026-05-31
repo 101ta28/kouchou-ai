@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import httpx
 import openai
 
 try:  # pragma: no cover - optional dependency
@@ -11,7 +12,7 @@ except Exception:  # pragma: no cover
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, ORJSONResponse
 
-from src.auth import verify_admin_api_key
+from src.auth import CurrentUser, get_current_user, verify_admin_api_key
 from src.config import settings
 from src.core.exceptions import (
     ClusterCSVParseError,
@@ -28,6 +29,7 @@ from src.schemas.report_config import ReportConfigUpdate
 from src.schemas.visualization_config import ReportDisplayConfig
 from src.services.llm_models import get_models_by_provider
 from src.services.llm_pricing import LLMPricing
+from src.services.report_access import get_accessible_report_slugs
 from src.services.report_duplicate import duplicate_report
 from src.services.report_launcher import execute_aggregation, launch_report_generation
 from src.services.report_status import (
@@ -44,6 +46,7 @@ from src.utils.slug_utils import validate_slug
 slogger = setup_logger()
 router = APIRouter()
 MAX_ERROR_LOG_CHARS = 4000
+current_user_dependency = Depends(get_current_user)
 
 def validate_path_within_report_dir(path) -> None:
     """Validate that resolved path is within REPORT_DIR.
@@ -64,8 +67,17 @@ def validate_path_within_report_dir(path) -> None:
 
 
 @router.get("/admin/reports")
-async def get_reports(api_key: str = Depends(verify_admin_api_key)) -> list[Report]:
-    return list(map(add_analysis_data, load_status_as_reports()))
+async def get_reports(
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> list[Report]:
+    reports = load_status_as_reports()
+    if settings.AUTH_ENABLED:
+        async with httpx.AsyncClient(timeout=20) as client:
+            accessible_slugs = await get_accessible_report_slugs(client, current_user)
+        reports = [report for report in reports if report.slug in accessible_slugs]
+
+    return list(map(add_analysis_data, reports))
 
 
 @router.post("/admin/reports", status_code=202)

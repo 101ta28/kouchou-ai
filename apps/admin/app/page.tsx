@@ -1,8 +1,10 @@
 import { Header } from "@/components/Header";
 import type { Report } from "@/type";
 import { Box, Code, Heading, Text, VStack } from "@chakra-ui/react";
+import { redirect } from "next/navigation";
 import { PageContent } from "./_components/PageContent";
 import { getApiBaseUrl } from "./utils/api";
+import { getReportViewerUrl } from "./utils/report-viewer";
 import { isAuthEnabled } from "./utils/supabase/env";
 import { getAuthorizationHeader } from "./utils/supabase/server";
 
@@ -92,6 +94,24 @@ function ErrorDisplay({ errorInfo }: { errorInfo: ErrorInfo }) {
 export default async function Page() {
   const apiUrl = getApiBaseUrl();
   const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
+
+  if (isAuthEnabled()) {
+    const accessResponse = await fetch(`${apiUrl}/admin/current-user/access`, {
+      method: "GET",
+      headers: {
+        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+        ...authHeaders,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }).catch(() => null);
+    if (accessResponse?.ok) {
+      const access: { viewer_only: boolean } = await accessResponse.json();
+      if (access.viewer_only) {
+        redirect(getReportViewerUrl());
+      }
+    }
+  }
 
   try {
     const response = await fetch(`${apiUrl}/admin/reports`, {

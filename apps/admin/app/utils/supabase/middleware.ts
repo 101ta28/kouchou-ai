@@ -30,7 +30,9 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isLoginPath = request.nextUrl.pathname.startsWith("/login");
-  if (!user && !isLoginPath) {
+  const isPasswordResetPath = request.nextUrl.pathname.startsWith("/reset-password");
+  const isAuthPath = isLoginPath || isPasswordResetPath;
+  if (!user && !isAuthPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

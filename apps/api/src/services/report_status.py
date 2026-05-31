@@ -119,6 +119,36 @@ def add_new_report_to_status_from_config(slug: str, config: dict, source_slug: s
         save_status()
 
 
+def add_ready_report_to_status(
+    slug: str,
+    title: str,
+    description: str,
+    visibility: ReportVisibility = ReportVisibility.PUBLIC,
+) -> None:
+    load_status()
+    with _lock:
+        if slug in _report_status:
+            return
+
+        _report_status[slug] = {
+            "slug": slug,
+            "source_slug": None,
+            "status": ReportStatus.READY.value,
+            "title": title,
+            "description": description,
+            "is_pubcom": False,
+            "visibility": visibility.value,
+            "created_at": datetime.now(UTC).isoformat(),
+            "token_usage": 0,
+            "token_usage_input": 0,
+            "token_usage_output": 0,
+            "estimated_cost": 0.0,
+            "provider": None,
+            "model": None,
+        }
+        save_status()
+
+
 def slug_exists(slug: str) -> bool:
     load_status()
     return slug in _report_status

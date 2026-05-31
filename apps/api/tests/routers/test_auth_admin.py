@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from src.auth import CurrentUser
 from src.routers import auth_admin
+from src.services import sample_report
 
 
 @pytest.fixture
@@ -103,6 +104,95 @@ async def test_platform_owner_can_issue_owner_to_new_organization(monkeypatch, c
     organization = await auth_admin._require_user_manager_for_payload(object(), current_user, create_request)
 
     assert organization is None
+
+
+@pytest.mark.asyncio
+async def test_sample_report_is_registered_for_new_organization(monkeypatch, tmp_path, current_user):
+    report_dir = tmp_path / "outputs"
+    source_dir = report_dir / sample_report.SAMPLE_SOURCE_SLUG
+    source_dir.mkdir(parents=True)
+    (source_dir / "hierarchical_result.json").write_text(
+        '{"config":{"question":"sample"},"overview":"sample overview","clusters":[],"arguments":[]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sample_report.settings, "REPORT_DIR", report_dir)
+    monkeypatch.setattr(sample_report.settings, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(sample_report.settings, "RETENTION_DAYS", 30)
+
+    upsert_calls: list[dict] = []
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        upsert_calls.append({"method": method, "path": path, "json": json, "params": params, "prefer": prefer})
+        return {}
+
+    monkeypatch.setattr(sample_report, "request_supabase_json", request_json)
+
+    slug = await sample_report.ensure_sample_report_for_organization(
+        object(),
+        {"id": "org-1", "slug": "org-a", "name": "Org A"},
+        current_user,
+    )
+
+    assert slug == "org-a-sample-report"
+    assert (report_dir / slug / "hierarchical_result.json").exists()
+    assert upsert_calls == [
+        {
+            "method": "POST",
+            "path": "/rest/v1/reports",
+            "json": {
+                "slug": "org-a-sample-report",
+                "organization_id": "org-1",
+                "created_by": "user-1",
+                "title": "Org A サンプルレポート",
+                "status": "ready",
+                "visibility": "public",
+                "artifact_path": "reports/org-a-sample-report/hierarchical_result.json",
+                "retention_expires_at": upsert_calls[0]["json"]["retention_expires_at"],
+                "purge_status": "active",
+            },
+            "params": {"on_conflict": "slug"},
+            "prefer": "resolution=merge-duplicates",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_current_user_access_marks_viewer_only(monkeypatch, current_user):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return []
+        if path == "/rest/v1/organization_memberships":
+            return [{"role": "viewer"}]
+        raise AssertionError(f"Unexpected Supabase request: {method} {path}")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+
+    response = await auth_admin.get_current_user_access(current_user=current_user)
+
+    assert response.platform_owner is False
+    assert response.roles == ["viewer"]
+    assert response.viewer_only is True
+
+
+@pytest.mark.asyncio
+async def test_current_user_access_does_not_mark_creator_as_viewer_only(monkeypatch, current_user):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return []
+        if path == "/rest/v1/organization_memberships":
+            return [{"role": "creator"}]
+        raise AssertionError(f"Unexpected Supabase request: {method} {path}")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+
+    response = await auth_admin.get_current_user_access(current_user=current_user)
+
+    assert response.roles == ["creator"]
+    assert response.viewer_only is False
 
 
 @pytest.mark.asyncio

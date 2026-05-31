@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.auth import CurrentUser, get_current_user, verify_admin_api_key
 from src.config import settings
+from src.services.sample_report import ensure_sample_report_for_organization
 
 router = APIRouter()
 current_user_dependency = Depends(get_current_user)
@@ -53,6 +54,12 @@ class DeletedUserResponse(BaseModel):
     user_id: str
     organization_slug: str
     auth_user_deleted: bool
+
+
+class CurrentUserAccessResponse(BaseModel):
+    platform_owner: bool
+    roles: list[str]
+    viewer_only: bool
 
 
 class ManageableOrganizationResponse(BaseModel):
@@ -120,15 +127,15 @@ def _assignable_roles_for_manager(role: str) -> list[str]:
     return []
 
 
-async def _get_or_create_organization(client: httpx.AsyncClient, payload: CreateUserRequest) -> dict:
+async def _get_or_create_organization(client: httpx.AsyncClient, payload: CreateUserRequest) -> tuple[dict, bool]:
     organizations = await _request_json(
         client,
         "GET",
         "/rest/v1/organizations",
-        params={"select": "id,slug", "slug": f"eq.{payload.organization_slug}"},
+        params={"select": "id,slug,name", "slug": f"eq.{payload.organization_slug}"},
     )
     if isinstance(organizations, list) and organizations:
-        return organizations[0]
+        return organizations[0], False
 
     created = await _request_json(
         client,
@@ -142,7 +149,7 @@ async def _get_or_create_organization(client: httpx.AsyncClient, payload: Create
     )
     if not isinstance(created, list) or not created:
         raise HTTPException(status_code=502, detail="Failed to create organization")
-    return created[0]
+    return created[0], True
 
 
 async def _get_organization_by_slug(client: httpx.AsyncClient, organization_slug: str) -> dict | None:
@@ -347,6 +354,22 @@ async def _is_target_platform_owner(client: httpx.AsyncClient, user_id: str) -> 
     return isinstance(platform_owners, list) and bool(platform_owners)
 
 
+async def _get_current_user_roles(client: httpx.AsyncClient, current_user: CurrentUser) -> list[str]:
+    if not settings.AUTH_ENABLED:
+        return []
+
+    memberships = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organization_memberships",
+        params={"select": "role", "user_id": f"eq.{current_user.user_id}"},
+    )
+    if not isinstance(memberships, list):
+        return []
+
+    return sorted({membership["role"] for membership in memberships if membership.get("role")})
+
+
 @router.get("/admin/user-management/context", response_model=UserManagementContextResponse)
 async def get_user_management_context(
     api_key: str = Depends(verify_admin_api_key),
@@ -354,6 +377,21 @@ async def get_user_management_context(
 ) -> UserManagementContextResponse:
     async with httpx.AsyncClient(timeout=20) as client:
         return await _get_user_management_context(client, current_user)
+
+
+@router.get("/admin/current-user/access", response_model=CurrentUserAccessResponse)
+async def get_current_user_access(
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> CurrentUserAccessResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        platform_owner = await _is_platform_owner(client, current_user)
+        roles = await _get_current_user_roles(client, current_user)
+        return CurrentUserAccessResponse(
+            platform_owner=platform_owner,
+            roles=roles,
+            viewer_only=not platform_owner and roles == ["viewer"],
+        )
 
 
 @router.get("/admin/users", response_model=ManagedUsersResponse)
@@ -451,9 +489,11 @@ async def create_user(
             raise HTTPException(status_code=502, detail="Failed to create user")
 
         if manageable_organization is None:
-            organization = await _get_or_create_organization(client, payload)
+            organization, organization_created = await _get_or_create_organization(client, payload)
             organization_id = organization["id"]
             organization_slug = organization["slug"]
+            if organization_created:
+                await ensure_sample_report_for_organization(client, organization, current_user)
         else:
             organization_id = manageable_organization.id
             organization_slug = manageable_organization.slug

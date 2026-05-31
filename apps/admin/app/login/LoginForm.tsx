@@ -1,5 +1,7 @@
 "use client";
 
+import { getApiBaseUrl } from "@/app/utils/api";
+import { getReportViewerUrl } from "@/app/utils/report-viewer";
 import { createClient } from "@/app/utils/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Box, Field, Heading, Input, Link, Text, VStack } from "@chakra-ui/react";
@@ -19,12 +21,26 @@ export function LoginForm() {
     setIsLoading(true);
 
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     setIsLoading(false);
 
     if (signInError) {
       setError("メールアドレスまたはパスワードが正しくありません。");
       return;
+    }
+
+    const accessResponse = await fetch(`${getApiBaseUrl()}/admin/current-user/access`, {
+      headers: {
+        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+        ...(data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+      },
+    }).catch(() => null);
+    if (accessResponse?.ok) {
+      const access: { viewer_only: boolean } = await accessResponse.json();
+      if (access.viewer_only) {
+        window.location.assign(getReportViewerUrl());
+        return;
+      }
     }
 
     router.replace("/");
@@ -40,7 +56,7 @@ export function LoginForm() {
 
     const supabase = createClient();
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     setError(
       resetError ? "パスワードリセットメールを送信できませんでした。" : "パスワードリセットメールを送信しました。",

@@ -1,20 +1,23 @@
 import json
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
-from src.auth import verify_public_api_key
+from src.auth import CurrentUser, get_current_user, verify_public_api_key
 from src.config import settings
 from src.schemas.public_report_result import PublicReportResult
 from src.schemas.report import Report, ReportStatus, ReportVisibility
 from src.schemas.visualization_config import DEFAULT_REPORT_DISPLAY_CONFIG, ReportDisplayConfig
+from src.services.report_access import get_accessible_report_slugs
 from src.services.report_status import load_status_as_reports
 from src.utils.slug_utils import validate_slug
 
 logger = logging.getLogger("uvicorn")
 
 router = APIRouter()
+current_user_dependency = Depends(get_current_user)
 
 def _load_validated_report_result(slug: str) -> dict:
     report_path = settings.REPORT_DIR / slug / "hierarchical_result.json"
@@ -32,16 +35,27 @@ def _load_validated_report_result(slug: str) -> dict:
 
 
 @router.get("/reports", dependencies=[Depends(verify_public_api_key)])
-async def reports() -> list[Report]:
+async def reports(current_user: CurrentUser = current_user_dependency) -> list[Report]:
     all_reports = load_status_as_reports()
-    ready_reports = [
-        report for report in all_reports if report.status == ReportStatus.READY and report.is_publicly_visible
-    ]
+    if settings.AUTH_ENABLED:
+        async with httpx.AsyncClient(timeout=20) as client:
+            accessible_slugs = await get_accessible_report_slugs(client, current_user)
+        ready_reports = [
+            report for report in all_reports if report.status == ReportStatus.READY and report.slug in accessible_slugs
+        ]
+    else:
+        ready_reports = [
+            report for report in all_reports if report.status == ReportStatus.READY and report.is_publicly_visible
+        ]
     return ready_reports
 
 
 @router.get("/reports/{slug}")
-async def report(slug: str, api_key: str = Depends(verify_public_api_key)) -> dict:
+async def report(
+    slug: str,
+    api_key: str = Depends(verify_public_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> dict:
     validate_slug(slug)
     report_path = settings.REPORT_DIR / slug / "hierarchical_result.json"
     all_reports = load_status_as_reports()
@@ -51,7 +65,12 @@ async def report(slug: str, api_key: str = Depends(verify_public_api_key)) -> di
         raise HTTPException(status_code=404, detail="Report not found")
     if target_report_status.status != ReportStatus.READY:
         raise HTTPException(status_code=404, detail="Report is not ready")
-    if target_report_status.visibility == ReportVisibility.PRIVATE:
+    if settings.AUTH_ENABLED:
+        async with httpx.AsyncClient(timeout=20) as client:
+            accessible_slugs = await get_accessible_report_slugs(client, current_user)
+        if slug not in accessible_slugs:
+            raise HTTPException(status_code=404, detail="Report not found")
+    elif target_report_status.visibility == ReportVisibility.PRIVATE:
         raise HTTPException(status_code=404, detail="Report is private")
     if not report_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")

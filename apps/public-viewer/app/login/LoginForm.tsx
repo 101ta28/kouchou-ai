@@ -40,7 +40,7 @@ export function LoginForm() {
 
     const supabase = createClient();
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     setError(
       resetError ? "パスワードリセットメールを送信できませんでした。" : "パスワードリセットメールを送信しました。",
