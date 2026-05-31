@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiKey } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 
 type DuplicateParams = {
@@ -23,7 +24,7 @@ type DuplicateParams = {
 type DuplicateResult = { success: true; slug: string } | { success: false; error: string };
 
 export async function duplicateReport(sourceSlug: string, params: DuplicateParams): Promise<DuplicateResult> {
-  const adminApiKey = process.env.ADMIN_API_KEY;
+  const adminApiKey = getAdminApiKey();
   if (!adminApiKey) {
     throw new Error("ADMIN_API_KEY is not set");
   }

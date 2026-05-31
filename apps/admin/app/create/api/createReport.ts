@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 import type { CsvData } from "../parseCsv";
 import type { PromptSettings } from "../types";
@@ -43,10 +44,9 @@ export async function createReport({
   userApiKey?: string;
 }): Promise<CreateReportResult> {
   try {
-    const headers: Record<string, string> = {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+    const headers = getAdminApiHeaders({
       "Content-Type": "application/json",
-    };
+    });
 
     if (userApiKey) {
       headers["x-user-api-key"] = userApiKey;

@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 
 export async function updateReportConfig(reportSlug: string, formData: FormData) {
@@ -9,10 +10,9 @@ export async function updateReportConfig(reportSlug: string, formData: FormData)
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/config`, {
       method: "PATCH",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
         question,
         intro,

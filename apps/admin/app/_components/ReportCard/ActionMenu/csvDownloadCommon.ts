@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "../../../utils/admin-api-key";
 import { getApiBaseUrl } from "../../../utils/api";
 
 type CsvDownloadOptions = {
@@ -25,10 +26,9 @@ export async function csvDownloadCommon(slug: string, options: CsvDownloadOption
 
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/comments/${slug}/csv`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
     });
 
     if (!response.ok) {

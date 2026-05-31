@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "../../../utils/admin-api-key";
 import { getApiBaseUrl } from "../../../utils/api";
 
 type JsonDownloadResult =
@@ -17,10 +18,9 @@ type JsonDownloadResult =
 export async function jsonDownload(slug: string): Promise<JsonDownloadResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/json`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
     });
 
     if (!response.ok) {

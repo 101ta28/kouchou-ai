@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 import type { ClusterResponse } from "@/type";
 
@@ -16,9 +17,7 @@ type FetchClustersResult =
 export async function fetchClusters(reportSlug: string): Promise<FetchClustersResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-labels`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-      },
+      headers: getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -45,10 +44,9 @@ export async function updateCluster(reportSlug: string, formData: FormData): Pro
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-label`, {
       method: "PATCH",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({ id, label, description }),
     });
 

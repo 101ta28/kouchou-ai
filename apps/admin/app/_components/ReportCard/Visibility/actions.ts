@@ -1,6 +1,7 @@
 "use server";
 
 import type { ReportVisibility } from "@/type";
+import { getAdminApiHeaders } from "../../../utils/admin-api-key";
 import { getApiBaseUrl } from "../../../utils/api";
 
 type Result =
@@ -17,10 +18,9 @@ export async function updateReportVisibility(slug: string, visibility: ReportVis
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/visibility`, {
       method: "PATCH",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({ visibility }),
     });
 

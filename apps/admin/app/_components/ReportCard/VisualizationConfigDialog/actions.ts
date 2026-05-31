@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 import type { ReportDisplayConfig } from "@/type";
 
@@ -16,9 +17,7 @@ type FetchVisualizationConfigResult =
 export async function fetchVisualizationConfig(reportSlug: string): Promise<FetchVisualizationConfigResult> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-      },
+      headers: getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -45,10 +44,9 @@ export async function updateVisualizationConfig(
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
       method: "PATCH",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify(config),
     });
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 
 type ErrorType = "authentication_error" | "insufficient_quota" | "rate_limit_error" | "unknown_error";
@@ -14,10 +15,9 @@ type VerificationResult = {
 
 export const verifyApiKey = async (provider: string, userApiKey?: string) => {
   try {
-    const headers: Record<string, string> = {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+    const headers = getAdminApiHeaders({
       "Content-Type": "application/json",
-    };
+    });
 
     if (userApiKey) {
       headers["x-user-api-key"] = userApiKey;
@@ -46,10 +46,9 @@ export const verifyChatGptApiKeyWithProvider = async (provider = "openai") => {
   try {
     const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify-chatgpt?provider=${provider}`, {
       method: "GET",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
     });
 
     const result = (await response.json()) as VerificationResult;

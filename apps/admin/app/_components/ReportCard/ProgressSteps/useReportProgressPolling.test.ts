@@ -1,27 +1,15 @@
 import { renderHook, waitFor } from "@testing-library/react";
+import { fetchReportStepStatus } from "./actions";
 import { useReportProgressPoll } from "./useReportProgressPolling";
 
-// Mock fetch
-global.fetch = jest.fn();
+jest.mock("./actions", () => ({
+  fetchReportStepStatus: jest.fn(),
+}));
 
-// Mock environment variables
-const mockEnv = {
-  NEXT_PUBLIC_API_BASEPATH: "http://localhost:8000",
-  NEXT_PUBLIC_ADMIN_API_KEY: "test-api-key",
-};
-
-Object.defineProperty(process.env, "NEXT_PUBLIC_API_BASEPATH", {
-  value: mockEnv.NEXT_PUBLIC_API_BASEPATH,
-});
-Object.defineProperty(process.env, "NEXT_PUBLIC_ADMIN_API_KEY", {
-  value: mockEnv.NEXT_PUBLIC_ADMIN_API_KEY,
-});
-
-// Mock timers
 jest.useFakeTimers();
 
 describe("useReportProgressPoll", () => {
-  const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
+  const mockFetchReportStepStatus = fetchReportStepStatus as jest.MockedFunction<typeof fetchReportStepStatus>;
   const original = console.error;
 
   beforeAll(() => {
@@ -29,7 +17,7 @@ describe("useReportProgressPoll", () => {
   });
 
   beforeEach(() => {
-    mockFetch.mockClear();
+    mockFetchReportStepStatus.mockClear();
     jest.clearAllTimers();
   });
 
@@ -51,31 +39,18 @@ describe("useReportProgressPoll", () => {
     expect(result.current.progress).toBe("loading");
   });
 
-  it("正しいヘッダーとURLでAPI呼び出しが行われる", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ current_step: "completed" }),
-    } as Response);
+  it("指定されたslugで進捗取得が行われる", async () => {
+    mockFetchReportStepStatus.mockResolvedValueOnce({ success: true, data: { current_step: "completed" } });
 
     renderHook(() => useReportProgressPoll("test-slug"));
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith("http://localhost:8000/admin/reports/test-slug/status/step-json", {
-        headers: {
-          "x-api-key": "test-api-key",
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-        },
-      });
+      expect(mockFetchReportStepStatus).toHaveBeenCalledWith("test-slug");
     });
   });
 
   it("APIからcurrent_stepが返された時にprogressが更新される", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ current_step: "extraction" }),
-    } as Response);
+    mockFetchReportStepStatus.mockResolvedValueOnce({ success: true, data: { current_step: "extraction" } });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
@@ -85,10 +60,7 @@ describe("useReportProgressPoll", () => {
   });
 
   it("current_stepがcompletedの時にポーリングが停止される", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ current_step: "completed" }),
-    } as Response);
+    mockFetchReportStepStatus.mockResolvedValueOnce({ success: true, data: { current_step: "completed" } });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
@@ -96,23 +68,21 @@ describe("useReportProgressPoll", () => {
       expect(result.current.progress).toBe("completed");
     });
 
-    // 保留中の呼び出しをクリア
     jest.runAllTimers();
 
-    // 完了後に追加の呼び出しがないことを確認
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(1);
   });
 
   it("current_stepがerrorの時にprogressがerrorに設定される", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
+    mockFetchReportStepStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
         current_step: "error",
         status: "error",
         error_message: "Step failed",
         error_log_excerpt: "trace line",
-      }),
-    } as Response);
+      },
+    });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
@@ -125,76 +95,57 @@ describe("useReportProgressPoll", () => {
   });
 
   it("current_stepがloadingまたはnullの時にポーリングが継続される", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ current_step: "loading" }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ current_step: "extraction" }),
-      } as Response);
+    mockFetchReportStepStatus
+      .mockResolvedValueOnce({ success: true, data: { current_step: "loading" } })
+      .mockResolvedValueOnce({ success: true, data: { current_step: "extraction" } });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // 最初の呼び出しでloadingが返される
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(1);
     });
 
-    // 次のポーリングをトリガーするために時間を進める
     jest.advanceTimersByTime(3000);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(2);
       expect(result.current.progress).toBe("extraction");
     });
   });
 
   it("失敗したリクエストがmaxRetriesまでリトライされる", async () => {
-    mockFetch
+    mockFetchReportStepStatus
       .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ current_step: "extraction" }),
-      } as Response);
+      .mockResolvedValueOnce({ success: true, data: { current_step: "extraction" } });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // 最初の失敗した試行を待つ
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(1);
     });
 
-    // 最初のリトライをトリガーするために時間を進める
     jest.advanceTimersByTime(5000);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(2);
     });
 
-    // 2回目のリトライをトリガーするために時間を進める
     jest.advanceTimersByTime(5000);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(3);
       expect(result.current.progress).toBe("extraction");
     });
   });
 
   it("最大リトライ回数後にエラーが設定される", async () => {
-    // maxRetriesより1多い11回の失敗した試行をモック
     for (let i = 0; i < 11; i++) {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ current_step: "loading" }),
-      } as Response);
+      mockFetchReportStepStatus.mockResolvedValueOnce({ success: false, error: "HTTP 500" });
     }
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // すべてのリトライ試行を通して時間を進める
     for (let i = 0; i < 10; i++) {
       jest.advanceTimersByTime(5000);
       await waitFor(() => {});
@@ -208,14 +159,12 @@ describe("useReportProgressPoll", () => {
   });
 
   it("例外による最大リトライ回数後にエラーが設定される", async () => {
-    // maxRetriesより1多い11回の失敗した試行をモック
     for (let i = 0; i < 11; i++) {
-      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+      mockFetchReportStepStatus.mockRejectedValueOnce(new Error("Network error"));
     }
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // すべてのリトライ試行を通して時間を進める
     for (let i = 0; i < 10; i++) {
       jest.advanceTimersByTime(5000);
       await waitFor(() => {});
@@ -229,67 +178,48 @@ describe("useReportProgressPoll", () => {
   });
 
   it("HTTPエラーレスポンスがリトライロジックで処理される", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ current_step: "extraction" }),
-      } as Response);
+    mockFetchReportStepStatus
+      .mockResolvedValueOnce({ success: false, error: "HTTP 500" })
+      .mockResolvedValueOnce({ success: false, error: "HTTP 500" })
+      .mockResolvedValueOnce({ success: true, data: { current_step: "extraction" } });
 
     const { result } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // 最初の失敗した試行を待つ
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(1);
     });
 
-    // 最初のリトライをトリガーするために時間を進める（短い間隔）
     jest.advanceTimersByTime(2000);
     await Promise.resolve();
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(2);
     });
 
-    // 2回目のリトライをトリガーするために時間を進める（短い間隔）
     jest.advanceTimersByTime(2000);
     await Promise.resolve();
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(3);
       expect(result.current.progress).toBe("extraction");
     });
   });
 
   it("アンマウント時にクリーンアップが行われる", async () => {
-    mockFetch.mockImplementation(
+    mockFetchReportStepStatus.mockImplementation(
       () =>
         new Promise((resolve) => {
           setTimeout(() => {
-            resolve({
-              ok: true,
-              json: async () => ({ current_step: "extraction" }),
-            } as Response);
+            resolve({ success: true, data: { current_step: "extraction" } });
           }, 1000);
         }),
     );
 
     const { unmount } = renderHook(() => useReportProgressPoll("test-slug"));
 
-    // fetchが完了する前にアンマウント
     unmount();
-
-    // fetch完了を過ぎて時間を進める
     jest.advanceTimersByTime(5000);
 
-    // フックがエラーなしでクリーンアップを適切に処理することを確認
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetchReportStepStatus).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,6 +3,7 @@ import type { Report } from "@/type";
 import { Box, Code, Heading, Text, VStack } from "@chakra-ui/react";
 import { redirect } from "next/navigation";
 import { PageContent } from "./_components/PageContent";
+import { getAdminApiHeaders } from "./utils/admin-api-key";
 import { getApiBaseUrl } from "./utils/api";
 import { getReportViewerUrl } from "./utils/report-viewer";
 import { isAuthEnabled } from "./utils/supabase/env";
@@ -40,7 +41,7 @@ function getHttpErrorInfo(status: number, apiUrl: string): ErrorInfo {
     case 401:
       return {
         title: "認証に失敗しました",
-        description: "APIキーが無効または設定されていません。環境変数 NEXT_PUBLIC_ADMIN_API_KEY を確認してください。",
+        description: "APIキーが無効または設定されていません。環境変数 ADMIN_API_KEY を確認してください。",
       };
     case 403:
       return {
@@ -98,11 +99,10 @@ export default async function Page() {
   if (isAuthEnabled()) {
     const accessResponse = await fetch(`${apiUrl}/admin/current-user/access`, {
       method: "GET",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         ...authHeaders,
         "Content-Type": "application/json",
-      },
+      }),
       cache: "no-store",
     }).catch(() => null);
     if (accessResponse?.ok) {
@@ -116,11 +116,10 @@ export default async function Page() {
   try {
     const response = await fetch(`${apiUrl}/admin/reports`, {
       method: "GET",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         ...authHeaders,
         "Content-Type": "application/json",
-      },
+      }),
       cache: "no-store",
     });
 

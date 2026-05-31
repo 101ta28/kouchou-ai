@@ -1,5 +1,6 @@
 import { toaster } from "@/components/ui/toaster";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { fetchModelsFromServer } from "../api/models";
 
 export type Provider = "openai" | "azure" | "openrouter" | "gemini" | "local";
 
@@ -50,33 +51,6 @@ const GEMINI_MODELS: ModelOption[] = [
 ];
 
 const LOCAL_LLM_AUTO_FETCH_DELAY_MS = 500;
-
-/**
- * サーバーからモデルリストを取得する関数
- * @param provider プロバイダー名
- * @param address LocalLLM用アドレス（localプロバイダーの場合のみ）
- */
-async function fetchModelsFromServer(provider: Provider, address?: string): Promise<ModelOption[]> {
-  const params = new URLSearchParams({ provider });
-  if (provider === "local" && address) {
-    params.append("address", address);
-  }
-
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/models?${params.toString()}`, {
-    method: "GET",
-    headers: {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
-
-  const models = await response.json();
-  return models;
-}
 
 /**
  * LocalStorageから値を取得する関数

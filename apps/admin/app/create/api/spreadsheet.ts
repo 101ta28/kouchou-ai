@@ -1,3 +1,7 @@
+"use server";
+
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
+import { getApiBaseUrl } from "@/app/utils/api";
 import type { SpreadsheetComment } from "../types";
 import { handleApiError } from "../utils/error-handler";
 
@@ -6,12 +10,11 @@ import { handleApiError } from "../utils/error-handler";
  */
 export async function importSpreadsheet(url: string, fileName: string): Promise<void> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/spreadsheet/import`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/spreadsheet/import`, {
       method: "POST",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      headers: getAdminApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify({
         url,
         file_name: fileName,
@@ -34,10 +37,8 @@ export async function importSpreadsheet(url: string, fileName: string): Promise<
  */
 export async function getSpreadsheetData(id: string): Promise<{ comments: SpreadsheetComment[] }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/spreadsheet/data/${id}`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-      },
+    const response = await fetch(`${getApiBaseUrl()}/admin/spreadsheet/data/${id}`, {
+      headers: getAdminApiHeaders(),
     });
 
     if (!response.ok) {
@@ -55,11 +56,9 @@ export async function getSpreadsheetData(id: string): Promise<{ comments: Spread
  */
 export async function deleteSpreadsheetData(id: string): Promise<void> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/inputs/${id}`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/inputs/${id}`, {
       method: "DELETE",
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-      },
+      headers: getAdminApiHeaders(),
     });
 
     if (!response.ok) {

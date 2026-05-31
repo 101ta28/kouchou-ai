@@ -1,5 +1,6 @@
 "use server";
 
+import { getAdminApiHeaders } from "@/app/utils/admin-api-key";
 import { getApiBaseUrl } from "@/app/utils/api";
 import type { PluginImportResult, PluginManifest, PluginPreviewResult } from "@/type.d";
 
@@ -8,9 +9,7 @@ import type { PluginImportResult, PluginManifest, PluginPreviewResult } from "@/
  */
 export async function getPlugins(): Promise<PluginManifest[]> {
   const response = await fetch(`${getApiBaseUrl()}/admin/plugins`, {
-    headers: {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-    },
+    headers: getAdminApiHeaders(),
     cache: "no-store",
   });
 
@@ -31,10 +30,9 @@ export async function validatePluginSource(
 ): Promise<{ isValid: boolean; error: string | null }> {
   const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/validate-source`, {
     method: "POST",
-    headers: {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+    headers: getAdminApiHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({ pluginId, source }),
   });
 
@@ -51,10 +49,9 @@ export async function validatePluginSource(
 export async function previewPluginData(pluginId: string, source: string, limit = 10): Promise<PluginPreviewResult> {
   const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/preview`, {
     method: "POST",
-    headers: {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+    headers: getAdminApiHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({ source, limit }),
   });
 
@@ -77,10 +74,9 @@ export async function importPluginData(
 ): Promise<PluginImportResult> {
   const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/import`, {
     method: "POST",
-    headers: {
-      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+    headers: getAdminApiHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({
       source,
       fileName,
