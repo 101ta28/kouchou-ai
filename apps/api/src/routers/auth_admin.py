@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from src.auth import CurrentUser, get_current_user, verify_admin_api_key
@@ -32,6 +32,27 @@ class CreatedUserResponse(BaseModel):
     organization_id: str
     organization_slug: str
     role: str
+
+
+class ManagedUserResponse(BaseModel):
+    user_id: str
+    email: str | None = None
+    display_name: str | None = None
+    organization_id: str
+    organization_slug: str
+    organization_name: str
+    role: str
+    can_delete: bool
+
+
+class ManagedUsersResponse(BaseModel):
+    users: list[ManagedUserResponse]
+
+
+class DeletedUserResponse(BaseModel):
+    user_id: str
+    organization_slug: str
+    auth_user_deleted: bool
 
 
 class ManageableOrganizationResponse(BaseModel):
@@ -122,6 +143,18 @@ async def _get_or_create_organization(client: httpx.AsyncClient, payload: Create
     if not isinstance(created, list) or not created:
         raise HTTPException(status_code=502, detail="Failed to create organization")
     return created[0]
+
+
+async def _get_organization_by_slug(client: httpx.AsyncClient, organization_slug: str) -> dict | None:
+    organizations = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organizations",
+        params={"select": "id,slug,name", "slug": f"eq.{organization_slug}", "limit": "1"},
+    )
+    if isinstance(organizations, list) and organizations:
+        return organizations[0]
+    return None
 
 
 async def _is_platform_owner(client: httpx.AsyncClient, current_user: CurrentUser) -> bool:
@@ -238,6 +271,33 @@ async def _get_user_management_context(
     )
 
 
+async def _get_manageable_organization_for_slug(
+    client: httpx.AsyncClient,
+    current_user: CurrentUser,
+    organization_slug: str,
+) -> ManageableOrganizationResponse:
+    if await _is_platform_owner(client, current_user):
+        organization = await _get_organization_by_slug(client, organization_slug)
+        if organization is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        return ManageableOrganizationResponse(
+            id=organization["id"],
+            slug=organization["slug"],
+            name=organization["name"],
+            role="platform_owner",
+            assignable_roles=_assignable_roles_for_manager("platform_owner"),
+        )
+
+    manageable_organizations = await _get_manageable_organizations(client, current_user)
+    target_organization = next(
+        (organization for organization in manageable_organizations if organization.slug == organization_slug),
+        None,
+    )
+    if target_organization is None:
+        raise HTTPException(status_code=403, detail="Users can only be managed in organizations you manage")
+    return target_organization
+
+
 async def _require_user_manager_for_payload(
     client: httpx.AsyncClient,
     current_user: CurrentUser,
@@ -263,6 +323,30 @@ async def _require_user_manager_for_payload(
     return target_organization
 
 
+async def _get_auth_users_by_id(client: httpx.AsyncClient, user_ids: list[str]) -> dict[str, dict]:
+    if not user_ids:
+        return {}
+
+    auth_users = await _request_json(
+        client,
+        "GET",
+        "/auth/v1/admin/users",
+        params={"page": "1", "per_page": "1000"},
+    )
+    users = auth_users.get("users", []) if isinstance(auth_users, dict) else []
+    return {user["id"]: user for user in users if user.get("id") in user_ids}
+
+
+async def _is_target_platform_owner(client: httpx.AsyncClient, user_id: str) -> bool:
+    platform_owners = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/platform_owners",
+        params={"select": "user_id", "user_id": f"eq.{user_id}", "limit": "1"},
+    )
+    return isinstance(platform_owners, list) and bool(platform_owners)
+
+
 @router.get("/admin/user-management/context", response_model=UserManagementContextResponse)
 async def get_user_management_context(
     api_key: str = Depends(verify_admin_api_key),
@@ -270,6 +354,77 @@ async def get_user_management_context(
 ) -> UserManagementContextResponse:
     async with httpx.AsyncClient(timeout=20) as client:
         return await _get_user_management_context(client, current_user)
+
+
+@router.get("/admin/users", response_model=ManagedUsersResponse)
+async def list_users(
+    organization_slug: str | None = Query(default=None),
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> ManagedUsersResponse:
+    async with httpx.AsyncClient(timeout=20) as client:
+        if organization_slug:
+            organizations = [await _get_manageable_organization_for_slug(client, current_user, organization_slug)]
+        else:
+            context = await _get_user_management_context(client, current_user)
+            organizations = context.organizations
+
+        if not organizations:
+            return ManagedUsersResponse(users=[])
+
+        organizations_by_id = {organization.id: organization for organization in organizations}
+        memberships = await _request_json(
+            client,
+            "GET",
+            "/rest/v1/organization_memberships",
+            params={
+                "select": "organization_id,user_id,role",
+                "organization_id": f"in.({','.join(organizations_by_id)})",
+            },
+        )
+        if not isinstance(memberships, list) or not memberships:
+            return ManagedUsersResponse(users=[])
+
+        user_ids = sorted({membership["user_id"] for membership in memberships if membership.get("user_id")})
+        auth_users_by_id = await _get_auth_users_by_id(client, user_ids)
+        profiles = await _request_json(
+            client,
+            "GET",
+            "/rest/v1/profiles",
+            params={"select": "user_id,display_name", "user_id": f"in.({','.join(user_ids)})"},
+        )
+        profiles_by_id = (
+            {profile["user_id"]: profile for profile in profiles if profile.get("user_id")}
+            if isinstance(profiles, list)
+            else {}
+        )
+
+        users: list[ManagedUserResponse] = []
+        for membership in memberships:
+            organization = organizations_by_id.get(membership.get("organization_id"))
+            user_id = membership.get("user_id")
+            if not organization or not user_id:
+                continue
+
+            auth_user = auth_users_by_id.get(user_id, {})
+            profile = profiles_by_id.get(user_id, {})
+            role = membership.get("role", "")
+            users.append(
+                ManagedUserResponse(
+                    user_id=user_id,
+                    email=auth_user.get("email"),
+                    display_name=profile.get("display_name") or auth_user.get("user_metadata", {}).get("display_name"),
+                    organization_id=organization.id,
+                    organization_slug=organization.slug,
+                    organization_name=organization.name,
+                    role=role,
+                    can_delete=user_id != current_user.user_id and role in organization.assignable_roles,
+                )
+            )
+
+        return ManagedUsersResponse(
+            users=sorted(users, key=lambda user: (user.organization_slug, user.email or "", user.user_id))
+        )
 
 
 @router.post("/admin/users", response_model=CreatedUserResponse, status_code=201)
@@ -331,3 +486,55 @@ async def create_user(
         organization_slug=organization_slug,
         role=payload.role,
     )
+
+
+@router.delete("/admin/users/{user_id}", response_model=DeletedUserResponse)
+async def delete_user(
+    user_id: str,
+    organization_slug: str = Query(min_length=1, pattern=r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"),
+    api_key: str = Depends(verify_admin_api_key),
+    current_user: CurrentUser = current_user_dependency,
+) -> DeletedUserResponse:
+    if user_id == current_user.user_id:
+        raise HTTPException(status_code=403, detail="You cannot delete your own user")
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        organization = await _get_manageable_organization_for_slug(client, current_user, organization_slug)
+        memberships = await _request_json(
+            client,
+            "GET",
+            "/rest/v1/organization_memberships",
+            params={
+                "select": "organization_id,user_id,role",
+                "organization_id": f"eq.{organization.id}",
+                "user_id": f"eq.{user_id}",
+                "limit": "1",
+            },
+        )
+        if not isinstance(memberships, list) or not memberships:
+            raise HTTPException(status_code=404, detail="User membership not found")
+
+        target_role = memberships[0].get("role", "")
+        if target_role not in organization.assignable_roles:
+            raise HTTPException(status_code=403, detail="Requested user cannot be deleted by your organization role")
+        if await _is_target_platform_owner(client, user_id):
+            raise HTTPException(status_code=403, detail="Platform owners cannot be deleted from this screen")
+
+        await _request_json(
+            client,
+            "DELETE",
+            "/rest/v1/organization_memberships",
+            params={"organization_id": f"eq.{organization.id}", "user_id": f"eq.{user_id}"},
+        )
+
+        remaining_memberships = await _request_json(
+            client,
+            "GET",
+            "/rest/v1/organization_memberships",
+            params={"select": "organization_id", "user_id": f"eq.{user_id}", "limit": "1"},
+        )
+        auth_user_deleted = not (isinstance(remaining_memberships, list) and remaining_memberships)
+        if auth_user_deleted:
+            await _request_json(client, "DELETE", f"/auth/v1/admin/users/{user_id}")
+
+    return DeletedUserResponse(user_id=user_id, organization_slug=organization.slug, auth_user_deleted=auth_user_deleted)

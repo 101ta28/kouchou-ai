@@ -16,7 +16,7 @@ import {
   Textarea,
   VStack,
 } from "@chakra-ui/react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 type Role = "owner" | "admin" | "creator" | "viewer";
 
@@ -32,6 +32,16 @@ type IssuedUser = CreatedUser & {
   display_name: string;
   organization_name: string;
   login_url: string;
+};
+
+type ManagedUser = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  organization_slug: string;
+  organization_name: string;
+  role: Role;
+  can_delete: boolean;
 };
 
 type ManageableOrganization = {
@@ -61,8 +71,11 @@ export function UserIssueForm() {
   const [isContextLoaded, setIsContextLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [createdUser, setCreatedUser] = useState<IssuedUser | null>(null);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
 
   const selectedOrganization = manageableOrganizations.find((organization) => organization.slug === organizationSlug);
   const hasInvitePermission = isPlatformOwner || manageableOrganizations.length > 0;
@@ -83,21 +96,41 @@ export function UserIssueForm() {
       ].join("\n")
     : "";
 
+  const getAuthHeaders = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    return {
+      "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    };
+  }, []);
+
+  const loadManagedUsers = useCallback(async () => {
+    setIsUsersLoading(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/admin/users`, {
+        headers: await getAuthHeaders(),
+      });
+      if (!response.ok) {
+        return;
+      }
+      const data: { users: ManagedUser[] } = await response.json();
+      setManagedUsers(data.users);
+    } finally {
+      setIsUsersLoading(false);
+    }
+  }, [getAuthHeaders]);
+
   useEffect(() => {
     let isMounted = true;
 
     async function loadUserManagementContext() {
       try {
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
         const response = await fetch(`${getApiBaseUrl()}/admin/user-management/context`, {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-            ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-          },
+          headers: await getAuthHeaders(),
         });
 
         if (!response.ok) {
@@ -128,11 +161,12 @@ export function UserIssueForm() {
     }
 
     loadUserManagementContext();
+    loadManagedUsers();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [getAuthHeaders, loadManagedUsers]);
 
   useEffect(() => {
     if (selectedOrganization && !selectedOrganization.assignable_roles.includes(role)) {
@@ -147,17 +181,11 @@ export function UserIssueForm() {
     setCreatedUser(null);
 
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const response = await fetch(`${getApiBaseUrl()}/admin/users`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify({
           email,
@@ -186,11 +214,47 @@ export function UserIssueForm() {
       setEmail("");
       setPassword("");
       setDisplayName("");
+      await loadManagedUsers();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ユーザーを発行できませんでした。");
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleDeleteUser(user: ManagedUser) {
+    if (!window.confirm(`${user.email || user.user_id} を ${user.organization_slug} から削除しますか？`)) {
+      return;
+    }
+
+    setDeletingUserId(user.user_id);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/admin/users/${user.user_id}?organization_slug=${encodeURIComponent(user.organization_slug)}`,
+        {
+          method: "DELETE",
+          headers: await getAuthHeaders(),
+        },
+      );
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.detail || `ユーザーを削除できませんでした。HTTP ${response.status}`);
+      }
+
+      setCreatedUser(null);
+      setMessage("ユーザーを削除しました。");
+      await loadManagedUsers();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ユーザーを削除できませんでした。");
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
+
+  function handleIssueAnotherUser() {
+    setCreatedUser(null);
+    setMessage(null);
   }
 
   async function handleCopyIssuedUser() {
@@ -317,7 +381,7 @@ export function UserIssueForm() {
                         setRole(nextOrganization.assignable_roles[0] ?? "viewer");
                       }
                     }}
-                    pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+                    pattern="[a-z0-9](([a-z0-9]|-)*[a-z0-9])?"
                     list={isPlatformOwner ? "manageable-organizations" : undefined}
                   />
                   {isPlatformOwner && (
@@ -366,10 +430,65 @@ export function UserIssueForm() {
                 </VStack>
               </Box>
             )}
-            <Button type="submit" disabled={isLoading || assignableRoles.length === 0}>
-              {isLoading ? "発行中" : "発行"}
-            </Button>
+            {createdUser ? (
+              <Button type="button" variant="tertiary" onClick={handleIssueAnotherUser}>
+                続けて発行
+              </Button>
+            ) : (
+              <Button type="submit" disabled={isLoading || assignableRoles.length === 0}>
+                {isLoading ? "発行中" : "発行"}
+              </Button>
+            )}
           </>
+        )}
+        {isContextLoaded && hasInvitePermission && (
+          <Box borderWidth="1px" borderColor="border.weak" borderRadius="8px" p="4">
+            <VStack align="stretch" gap="3">
+              <HStack justify="space-between" gap="3" align="center">
+                <Heading fontSize="md">発行済みユーザー</Heading>
+                <Button type="button" variant="tertiary" onClick={loadManagedUsers} disabled={isUsersLoading}>
+                  {isUsersLoading ? "更新中" : "更新"}
+                </Button>
+              </HStack>
+              {managedUsers.length === 0 ? (
+                <Text color="gray.600" fontSize="sm">
+                  管理できるユーザーはまだありません。
+                </Text>
+              ) : (
+                <VStack align="stretch" gap="2">
+                  {managedUsers.map((user) => (
+                    <HStack
+                      key={`${user.organization_slug}:${user.user_id}`}
+                      justify="space-between"
+                      gap="3"
+                      borderWidth="1px"
+                      borderColor="border.weak"
+                      borderRadius="8px"
+                      p="3"
+                    >
+                      <Box minW="0">
+                        <Text fontSize="sm" fontWeight="bold">
+                          {user.email || user.user_id}
+                        </Text>
+                        <Text color="gray.600" fontSize="xs">
+                          {user.display_name || "表示名なし"} / {user.organization_slug} / {user.role}
+                        </Text>
+                      </Box>
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        aria-label={`${user.email || user.user_id} を削除`}
+                        disabled={!user.can_delete || deletingUserId === user.user_id}
+                        onClick={() => handleDeleteUser(user)}
+                      >
+                        {deletingUserId === user.user_id ? "削除中" : "削除"}
+                      </Button>
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+            </VStack>
+          </Box>
         )}
       </VStack>
     </Box>
