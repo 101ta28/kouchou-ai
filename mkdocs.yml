@@ -84,6 +84,7 @@ nav:
       - プラグインガイド: development/plugin-guide.md
       - プラグイン出力データ構造: development/plugin-output-data-structures.md
       - プラグインシステムの設計思想: development/why-plugin-system.md
+      - 認証・複数ユーザー設計: development/auth-multi-user-design.md
       - PyPI公開: development/pypi-release.md
       - コードレビューガイドライン: development/code-review-guidelines.md
       - Devinとの協働: development/devin-collaboration.md
