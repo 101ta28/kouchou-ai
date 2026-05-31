@@ -13,6 +13,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getApiBaseUrl } from "../utils/api";
 import { createStaticBuildFetchError, getStaticBuildReportSlugs, isStaticExportBuild } from "../utils/static-build";
+import { isAuthEnabled } from "../utils/supabase/env";
+import { getAuthorizationHeader } from "../utils/supabase/server";
 
 type PageProps = {
   params: Promise<{
@@ -51,12 +53,14 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   try {
     const slug = (await params).slug;
+    const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, {
       next: { tags: ["meta"] },
     });
     const resultResponse = await fetch(`${getApiBaseUrl()}/reports/${slug}`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       next: { tags: [`report-${slug}`] },
@@ -109,12 +113,14 @@ export default async function Page({ params }: PageProps) {
   let resultResponse: Response;
 
   try {
+    const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     metaResponse = await fetch(`${apiUrl}/meta/metadata.json`, {
       next: { tags: ["meta"] },
     });
     resultResponse = await fetch(`${apiUrl}/reports/${slug}`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       next: { tags: [`report-${slug}`] },

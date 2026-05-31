@@ -1,7 +1,9 @@
 "use client";
 
 import { getImageFromServerSrc } from "@/app/utils/image-src";
+import { isAuthEnabled } from "@/app/utils/supabase/env";
 import { HStack, Image, useBreakpointValue } from "@chakra-ui/react";
+import { LogoutButton } from "./auth/LogoutButton";
 import { GlobalNavigation } from "./globalNavigation/GlobalNavigation";
 
 export function Header() {
@@ -21,7 +23,10 @@ export function Header() {
       borderColor="border.weak"
     >
       <Image src={logoSrc} alt="広聴AI" />
-      <GlobalNavigation />
+      <HStack gap="4">
+        <GlobalNavigation />
+        {isAuthEnabled() && <LogoutButton />}
+      </HStack>
     </HStack>
   );
 }

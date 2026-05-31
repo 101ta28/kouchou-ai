@@ -29,6 +29,7 @@ type BuildCspOptions = {
   apiBasePath?: string;
   publicApiBasePath?: string;
   siteUrl?: string;
+  supabaseUrl?: string;
   enableGoogleAnalytics?: boolean;
   isDevelopment?: boolean;
 };
@@ -39,10 +40,11 @@ export const buildCspHeaderValue = ({
   apiBasePath,
   publicApiBasePath,
   siteUrl,
+  supabaseUrl,
   enableGoogleAnalytics = false,
   isDevelopment = false,
 }: BuildCspOptions): string => {
-  const remoteOrigins = extractAllowedOrigins([apiBasePath, publicApiBasePath, siteUrl]);
+  const remoteOrigins = extractAllowedOrigins([apiBasePath, publicApiBasePath, siteUrl, supabaseUrl]);
   const scriptSrc = ["'self'", "'unsafe-inline'"];
   const styleSrc = ["'self'", "'unsafe-inline'", GOOGLE_FONTS_STYLES_ORIGIN];
   const fontSrc = ["'self'", "data:", GOOGLE_FONTS_ASSETS_ORIGIN];

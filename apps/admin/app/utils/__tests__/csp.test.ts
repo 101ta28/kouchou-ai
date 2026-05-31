@@ -19,10 +19,15 @@ describe("CSP helpers", () => {
       apiBasePath: "http://18.233.19.158:8000",
       publicApiBasePath: "http://18.233.19.158:8000/v1",
       siteUrl: "http://18.233.19.158:4000",
+      supabaseUrl: "https://example.supabase.co",
     });
 
-    expect(csp).toContain("img-src 'self' data: blob: http://18.233.19.158:8000 http://18.233.19.158:4000");
-    expect(csp).toContain("connect-src 'self' http://18.233.19.158:8000 http://18.233.19.158:4000");
+    expect(csp).toContain(
+      "img-src 'self' data: blob: http://18.233.19.158:8000 http://18.233.19.158:4000 https://example.supabase.co",
+    );
+    expect(csp).toContain(
+      "connect-src 'self' http://18.233.19.158:8000 http://18.233.19.158:4000 https://example.supabase.co",
+    );
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
     expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com");
   });

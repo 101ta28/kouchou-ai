@@ -1,8 +1,10 @@
 import { Header } from "@/components/Header";
 import type { Report } from "@/type";
-import { Box, Heading, Text, VStack, Code } from "@chakra-ui/react";
+import { Box, Code, Heading, Text, VStack } from "@chakra-ui/react";
 import { PageContent } from "./_components/PageContent";
 import { getApiBaseUrl } from "./utils/api";
+import { isAuthEnabled } from "./utils/supabase/env";
+import { getAuthorizationHeader } from "./utils/supabase/server";
 
 type ErrorInfo = {
   title: string;
@@ -12,7 +14,10 @@ type ErrorInfo = {
 
 function getErrorInfo(error: unknown, apiUrl: string): ErrorInfo {
   // 接続エラー（サーバーが起動していない、アドレス/ポートが間違っている）
-  if (error instanceof TypeError && (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED"))) {
+  if (
+    error instanceof TypeError &&
+    (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED"))
+  ) {
     return {
       title: "APIサーバーに接続できません",
       description: "APIサーバーが起動していないか、接続先の設定が間違っている可能性があります。",
@@ -86,12 +91,14 @@ function ErrorDisplay({ errorInfo }: { errorInfo: ErrorInfo }) {
 
 export default async function Page() {
   const apiUrl = getApiBaseUrl();
+  const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
 
   try {
     const response = await fetch(`${apiUrl}/admin/reports`, {
       method: "GET",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+        ...authHeaders,
         "Content-Type": "application/json",
       },
       cache: "no-store",

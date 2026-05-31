@@ -1,12 +1,14 @@
+import { ApiConnectionError } from "@/components/ApiConnectionError";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Reporter } from "@/components/reporter/Reporter";
-import { ApiConnectionError } from "@/components/ApiConnectionError";
 import type { Meta, Report } from "@/type";
 import { Box, Card, HStack, Heading, Image, Text, VStack } from "@chakra-ui/react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getApiBaseUrl } from "./utils/api";
+import { isAuthEnabled } from "./utils/supabase/env";
+import { getAuthorizationHeader } from "./utils/supabase/server";
 
 export const revalidate = 300;
 
@@ -43,10 +45,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Page() {
   try {
+    const authHeaders = isAuthEnabled() ? await getAuthorizationHeader() : {};
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`);
     const reportsResponse = await fetch(`${getApiBaseUrl()}/reports`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
+        ...authHeaders,
         "Content-Type": "application/json",
       },
     });

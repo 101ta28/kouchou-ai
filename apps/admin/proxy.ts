@@ -1,8 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { isAuthEnabled } from "./app/utils/supabase/env";
+import { updateSession } from "./app/utils/supabase/middleware";
 
-export function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   if (req.nextUrl.pathname === "/api/healthcheck") {
     return NextResponse.next();
+  }
+
+  if (isAuthEnabled()) {
+    return updateSession(req);
   }
 
   if (
@@ -29,3 +35,7 @@ export function middleware(req: NextRequest) {
     },
   );
 }
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|images|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+};

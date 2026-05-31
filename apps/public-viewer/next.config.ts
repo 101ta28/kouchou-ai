@@ -10,6 +10,7 @@ const contentSecurityPolicy = buildCspHeaderValue({
   apiBasePath: process.env.API_BASEPATH,
   publicApiBasePath: process.env.NEXT_PUBLIC_API_BASEPATH,
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   enableGoogleAnalytics,
   isDevelopment: process.env.NODE_ENV !== "production",
 });
