@@ -40,4 +40,9 @@ describe("CSP helpers", () => {
     expect(withGa).toContain("script-src 'self' 'unsafe-inline' https://www.googletagmanager.com");
     expect(withGa).toContain("connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com");
   });
+
+  it("allows unsafe eval only when explicitly requested", () => {
+    expect(buildCspHeaderValue({})).not.toContain("'unsafe-eval'");
+    expect(buildCspHeaderValue({ allowUnsafeEval: true })).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
+  });
 });

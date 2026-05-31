@@ -32,6 +32,7 @@ type BuildCspOptions = {
   supabaseUrl?: string;
   enableGoogleAnalytics?: boolean;
   isDevelopment?: boolean;
+  allowUnsafeEval?: boolean;
 };
 
 type CspDirective = [directive: string, values: string[]];
@@ -43,6 +44,7 @@ export const buildCspHeaderValue = ({
   supabaseUrl,
   enableGoogleAnalytics = false,
   isDevelopment = false,
+  allowUnsafeEval = false,
 }: BuildCspOptions): string => {
   const remoteOrigins = extractAllowedOrigins([apiBasePath, publicApiBasePath, siteUrl, supabaseUrl]);
   const scriptSrc = ["'self'", "'unsafe-inline'"];
@@ -51,7 +53,7 @@ export const buildCspHeaderValue = ({
   const imgSrc = ["'self'", "data:", "blob:", ...remoteOrigins];
   const connectSrc = ["'self'", ...remoteOrigins];
 
-  if (isDevelopment) {
+  if (isDevelopment || allowUnsafeEval) {
     scriptSrc.push("'unsafe-eval'");
   }
 

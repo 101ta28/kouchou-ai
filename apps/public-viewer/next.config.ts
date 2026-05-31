@@ -13,6 +13,8 @@ const contentSecurityPolicy = buildCspHeaderValue({
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
   enableGoogleAnalytics,
   isDevelopment: process.env.NODE_ENV !== "production",
+  // Plotly scattergl uses regl, which compiles WebGL draw commands at runtime.
+  allowUnsafeEval: true,
 });
 
 const nextConfig: NextConfig = {
