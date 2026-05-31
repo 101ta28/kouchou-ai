@@ -91,6 +91,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<supabase-anon-or-publishable-key>
 
 NEXT_PUBLIC_API_BASEPATH=https://<api>.up.railway.app
 API_BASEPATH=https://<api>.up.railway.app
+ADMIN_API_KEY=<same-as-api-ADMIN_API_KEY>
 NEXT_PUBLIC_ADMIN_API_KEY=<same-as-api-ADMIN_API_KEY>
 
 NEXT_PUBLIC_CLIENT_BASEPATH=https://<public-viewer>.up.railway.app
