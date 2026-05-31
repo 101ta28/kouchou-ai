@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     REVALIDATE_URL: str = Field(env="REVALIDATE_URL", default="http://public-viewer:3000/api/revalidate")
     BASE_DIR: Path = Path(__file__).parent.parent
     TOOL_DIR: Path = BASE_DIR / "broadlistening"
-    REPORT_DIR: Path = TOOL_DIR / "pipeline" / "outputs"
-    CONFIG_DIR: Path = TOOL_DIR / "pipeline" / "configs"
-    INPUT_DIR: Path = TOOL_DIR / "pipeline" / "inputs"
-    DATA_DIR: Path = BASE_DIR / "data"
+    REPORT_DIR: Path = Field(default=TOOL_DIR / "pipeline" / "outputs", env="REPORT_DIR")
+    CONFIG_DIR: Path = Field(default=TOOL_DIR / "pipeline" / "configs", env="CONFIG_DIR")
+    INPUT_DIR: Path = Field(default=TOOL_DIR / "pipeline" / "inputs", env="INPUT_DIR")
+    DATA_DIR: Path = Field(default=BASE_DIR / "data", env="DATA_DIR")
 
     # ストレージ設定
     STORAGE_TYPE: StorageType = Field(env="STORAGE_TYPE", default="local")

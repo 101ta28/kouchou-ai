@@ -28,11 +28,21 @@ def _sample_description(report_result: dict) -> str:
     return overview[:180] if overview else "広聴AI オンラインの操作確認用サンプルレポートです。"
 
 
+def _get_sample_source_dir():
+    configured_source_dir = settings.REPORT_DIR / SAMPLE_SOURCE_SLUG
+    if configured_source_dir.exists():
+        return configured_source_dir
+
+    bundled_source_dir = settings.TOOL_DIR / "pipeline" / "outputs" / SAMPLE_SOURCE_SLUG
+    if bundled_source_dir.exists():
+        return bundled_source_dir
+
+    raise FileNotFoundError(f"Sample report source not found: {configured_source_dir}")
+
+
 def _copy_sample_report_files(sample_slug: str) -> dict:
-    source_dir = settings.REPORT_DIR / SAMPLE_SOURCE_SLUG
+    source_dir = _get_sample_source_dir()
     target_dir = settings.REPORT_DIR / sample_slug
-    if not source_dir.exists():
-        raise FileNotFoundError(f"Sample report source not found: {source_dir}")
 
     target_dir.mkdir(parents=True, exist_ok=True)
     for source_path in source_dir.iterdir():
