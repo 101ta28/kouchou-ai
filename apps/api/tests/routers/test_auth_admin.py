@@ -107,6 +107,78 @@ async def test_platform_owner_can_issue_owner_to_new_organization(monkeypatch, c
 
 
 @pytest.mark.asyncio
+async def test_create_user_reactivates_auth_user_without_memberships(monkeypatch, current_user, create_request):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+    calls: list[tuple[str, str]] = []
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        calls.append((method, path))
+        if path == "/rest/v1/platform_owners":
+            return []
+        if path == "/rest/v1/organization_memberships" and method == "GET":
+            if params.get("select") == "organization_id,role" and params.get("user_id") == "eq.user-1":
+                return [{"organization_id": "org-1", "role": "admin"}]
+            if params.get("user_id") == "eq.existing-user":
+                return []
+        if path == "/rest/v1/organizations":
+            return [{"id": "org-1", "slug": "org-a", "name": "Org A"}]
+        if path == "/auth/v1/admin/users" and method == "POST":
+            raise HTTPException(status_code=409, detail="User already exists")
+        if path == "/auth/v1/admin/users" and method == "GET":
+            return {"users": [{"id": "existing-user", "email": "new-user@example.com"}]}
+        if path == "/auth/v1/admin/users/existing-user" and method == "PUT":
+            assert json == {
+                "password": "temporary-password",
+                "email_confirm": True,
+                "user_metadata": {"display_name": "New User"},
+            }
+            return {"id": "existing-user", "email": "new-user@example.com"}
+        if path == "/rest/v1/profiles" and method == "POST":
+            return {}
+        if path == "/rest/v1/organization_memberships" and method == "POST":
+            assert json == {"organization_id": "org-1", "user_id": "existing-user", "role": "viewer"}
+            return {}
+        raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+
+    response = await auth_admin.create_user(create_request, current_user=current_user)
+
+    assert response.user_id == "existing-user"
+    assert response.organization_id == "org-1"
+    assert ("PUT", "/auth/v1/admin/users/existing-user") in calls
+
+
+@pytest.mark.asyncio
+async def test_create_user_keeps_existing_member_as_conflict(monkeypatch, current_user, create_request):
+    monkeypatch.setattr(auth_admin, "settings", SimpleNamespace(AUTH_ENABLED=True))
+
+    async def request_json(client, method, path, *, json=None, params=None, prefer=None):
+        if path == "/rest/v1/platform_owners":
+            return []
+        if path == "/rest/v1/organization_memberships" and method == "GET":
+            if params.get("select") == "organization_id,role" and params.get("user_id") == "eq.user-1":
+                return [{"organization_id": "org-1", "role": "admin"}]
+            if params.get("user_id") == "eq.existing-user":
+                return [{"organization_id": "org-1", "role": "viewer"}]
+        if path == "/rest/v1/organizations":
+            return [{"id": "org-1", "slug": "org-a", "name": "Org A"}]
+        if path == "/auth/v1/admin/users" and method == "POST":
+            raise HTTPException(status_code=409, detail="User already exists")
+        if path == "/auth/v1/admin/users" and method == "GET":
+            return {"users": [{"id": "existing-user", "email": "new-user@example.com"}]}
+        raise AssertionError(f"Unexpected Supabase request: {method} {path} {params}")
+
+    monkeypatch.setattr(auth_admin, "_request_json", request_json)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth_admin.create_user(create_request, current_user=current_user)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "User already exists"
+
+
+@pytest.mark.asyncio
 async def test_sample_report_is_registered_for_new_organization(monkeypatch, tmp_path, current_user):
     report_dir = tmp_path / "outputs"
     source_dir = report_dir / sample_report.SAMPLE_SOURCE_SLUG

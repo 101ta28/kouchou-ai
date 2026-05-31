@@ -392,6 +392,69 @@ async def _get_auth_users_by_id(client: httpx.AsyncClient, user_ids: list[str]) 
     return {user["id"]: user for user in users if user.get("id") in user_ids}
 
 
+async def _get_auth_user_by_email(client: httpx.AsyncClient, email: str) -> dict | None:
+    auth_users = await _request_json(
+        client,
+        "GET",
+        "/auth/v1/admin/users",
+        params={"page": "1", "per_page": "1000"},
+    )
+    users = auth_users.get("users", []) if isinstance(auth_users, dict) else []
+    normalized_email = email.lower()
+    return next((user for user in users if user.get("email", "").lower() == normalized_email), None)
+
+
+async def _get_user_memberships(client: httpx.AsyncClient, user_id: str) -> list[dict]:
+    memberships = await _request_json(
+        client,
+        "GET",
+        "/rest/v1/organization_memberships",
+        params={"select": "organization_id,role", "user_id": f"eq.{user_id}"},
+    )
+    return memberships if isinstance(memberships, list) else []
+
+
+async def _create_or_reactivate_auth_user(client: httpx.AsyncClient, payload: CreateUserRequest) -> dict:
+    try:
+        user = await _request_json(
+            client,
+            "POST",
+            "/auth/v1/admin/users",
+            json={
+                "email": payload.email,
+                "password": payload.password,
+                "email_confirm": True,
+                "user_metadata": {"display_name": payload.display_name},
+            },
+        )
+    except HTTPException as e:
+        if e.status_code != 409:
+            raise
+
+        existing_user = await _get_auth_user_by_email(client, payload.email)
+        if not existing_user or not existing_user.get("id"):
+            raise
+
+        existing_memberships = await _get_user_memberships(client, existing_user["id"])
+        if existing_memberships:
+            raise
+
+        user = await _request_json(
+            client,
+            "PUT",
+            f"/auth/v1/admin/users/{existing_user['id']}",
+            json={
+                "password": payload.password,
+                "email_confirm": True,
+                "user_metadata": {"display_name": payload.display_name},
+            },
+        )
+
+    if not isinstance(user, dict) or not user.get("id"):
+        raise HTTPException(status_code=502, detail="Failed to create user")
+    return user
+
+
 async def _is_target_platform_owner(client: httpx.AsyncClient, user_id: str) -> bool:
     platform_owners = await _request_json(
         client,
@@ -705,29 +768,16 @@ async def create_user(
     async with httpx.AsyncClient(timeout=20) as client:
         manageable_organization = await _require_user_manager_for_payload(client, current_user, payload)
 
-        user = await _request_json(
-            client,
-            "POST",
-            "/auth/v1/admin/users",
-            json={
-                "email": payload.email,
-                "password": payload.password,
-                "email_confirm": True,
-                "user_metadata": {"display_name": payload.display_name},
-            },
-        )
-        if not isinstance(user, dict) or not user.get("id"):
-            raise HTTPException(status_code=502, detail="Failed to create user")
-
         if manageable_organization is None:
             organization, organization_created = await _get_or_create_organization(client, payload)
             organization_id = organization["id"]
             organization_slug = organization["slug"]
-            if organization_created:
-                await ensure_sample_report_for_organization(client, organization, current_user)
         else:
+            organization_created = False
             organization_id = manageable_organization.id
             organization_slug = manageable_organization.slug
+
+        user = await _create_or_reactivate_auth_user(client, payload)
 
         await _request_json(
             client,
@@ -749,6 +799,8 @@ async def create_user(
             prefer="resolution=merge-duplicates",
             params={"on_conflict": "organization_id,user_id"},
         )
+        if manageable_organization is None and organization_created:
+            await ensure_sample_report_for_organization(client, organization, current_user)
 
     return CreatedUserResponse(
         user_id=user["id"],
