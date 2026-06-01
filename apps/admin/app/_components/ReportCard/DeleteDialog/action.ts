@@ -5,8 +5,9 @@ import { getApiBaseUrl } from "../../../utils/api";
 type DeleteResult = { success: true } | { success: false; error: string };
 
 export async function reportDelete(slug: string): Promise<DeleteResult> {
+  const encodedSlug = encodeURIComponent(slug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedSlug}`, {
       method: "DELETE",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

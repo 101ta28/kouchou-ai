@@ -33,8 +33,9 @@ export async function importSpreadsheet(url: string, fileName: string): Promise<
  * スプレッドシートのデータを取得する
  */
 export async function getSpreadsheetData(id: string): Promise<{ comments: SpreadsheetComment[] }> {
+  const encodedId = encodeURIComponent(id);
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/spreadsheet/data/${id}`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/spreadsheet/data/${encodedId}`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
       },
@@ -54,8 +55,9 @@ export async function getSpreadsheetData(id: string): Promise<{ comments: Spread
  * スプレッドシートのデータを削除する
  */
 export async function deleteSpreadsheetData(id: string): Promise<void> {
+  const encodedId = encodeURIComponent(id);
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/inputs/${id}`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/inputs/${encodedId}`, {
       method: "DELETE",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

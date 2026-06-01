@@ -29,7 +29,8 @@ export async function validatePluginSource(
   pluginId: string,
   source: string,
 ): Promise<{ isValid: boolean; error: string | null }> {
-  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/validate-source`, {
+  const encodedPluginId = encodeURIComponent(pluginId);
+  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${encodedPluginId}/validate-source`, {
     method: "POST",
     headers: {
       "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
@@ -49,7 +50,8 @@ export async function validatePluginSource(
  * プラグインからデータをプレビュー
  */
 export async function previewPluginData(pluginId: string, source: string, limit = 10): Promise<PluginPreviewResult> {
-  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/preview`, {
+  const encodedPluginId = encodeURIComponent(pluginId);
+  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${encodedPluginId}/preview`, {
     method: "POST",
     headers: {
       "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
@@ -75,7 +77,8 @@ export async function importPluginData(
   maxResults = 1000,
   includeReplies = false,
 ): Promise<PluginImportResult> {
-  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${pluginId}/import`, {
+  const encodedPluginId = encodeURIComponent(pluginId);
+  const response = await fetch(`${getApiBaseUrl()}/admin/plugins/${encodedPluginId}/import`, {
     method: "POST",
     headers: {
       "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

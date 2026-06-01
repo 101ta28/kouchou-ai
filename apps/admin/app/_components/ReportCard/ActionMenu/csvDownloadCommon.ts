@@ -22,9 +22,10 @@ type CsvDownloadResult =
 
 export async function csvDownloadCommon(slug: string, options: CsvDownloadOptions = {}): Promise<CsvDownloadResult> {
   const { includeBOM = false, filenameSuffix = "", contentType = "text/csv" } = options;
+  const encodedSlug = encodeURIComponent(slug);
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/comments/${slug}/csv`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/comments/${encodedSlug}/csv`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
         "Content-Type": "application/json",

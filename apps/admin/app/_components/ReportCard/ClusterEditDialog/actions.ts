@@ -14,8 +14,9 @@ type FetchClustersResult =
     };
 
 export async function fetchClusters(reportSlug: string): Promise<FetchClustersResult> {
+  const encodedReportSlug = encodeURIComponent(reportSlug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-labels`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedReportSlug}/cluster-labels`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
       },
@@ -38,12 +39,13 @@ type UpdateClusterResult = {
 };
 
 export async function updateCluster(reportSlug: string, formData: FormData): Promise<UpdateClusterResult> {
+  const encodedReportSlug = encodeURIComponent(reportSlug);
   const id = formData.get("id") as string;
   const label = formData.get("label") as string;
   const description = formData.get("description") as string;
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/cluster-label`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedReportSlug}/cluster-label`, {
       method: "PATCH",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

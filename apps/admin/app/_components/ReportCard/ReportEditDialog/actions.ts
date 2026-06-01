@@ -3,11 +3,12 @@
 import { getApiBaseUrl } from "@/app/utils/api";
 
 export async function updateReportConfig(reportSlug: string, formData: FormData) {
+  const encodedReportSlug = encodeURIComponent(reportSlug);
   const question = formData.get("question") as string;
   const intro = formData.get("intro") as string;
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/config`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedReportSlug}/config`, {
       method: "PATCH",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

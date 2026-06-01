@@ -181,6 +181,15 @@ def _read_error_log_excerpt(log_path: Path) -> str | None:
     return content[-MAX_ERROR_LOG_CHARS:]
 
 
+def _api_key_verification_error_response(message: str, error_type: str) -> dict:
+    return {
+        "success": False,
+        "message": message,
+        "error_detail": message,
+        "error_type": error_type,
+    }
+
+
 @router.get("/admin/reports/{slug}/status/step-json", dependencies=[Depends(verify_admin_api_key)])
 async def get_current_step(slug: str) -> dict:
     validate_slug(slug)
@@ -522,48 +531,42 @@ async def verify_api_key(
         }
 
     except openai.AuthenticationError as e:
-        return {
-            "success": False,
-            "message": "認証エラー: APIキーが無効または期限切れです",
-            "error_detail": str(e),
-            "error_type": "authentication_error",
-        }
+        slogger.warning(f"Authentication error while verifying API key: {e}")
+        return _api_key_verification_error_response(
+            "認証エラー: APIキーが無効または期限切れです",
+            "authentication_error",
+        )
     except openai.RateLimitError as e:
         error_str = str(e).lower()
         if "insufficient_quota" in error_str or "quota exceeded" in error_str:
-            return {
-                "success": False,
-                "message": "残高不足エラー: APIキーのデポジット残高が不足しています。残高を追加してください。",
-                "error_detail": str(e),
-                "error_type": "insufficient_quota",
-            }
-        return {
-            "success": False,
-            "message": "レート制限エラー: APIリクエストの制限を超えました。しばらく待ってから再試行してください。",
-            "error_detail": str(e),
-            "error_type": "rate_limit_error",
-        }
+            slogger.warning(f"Insufficient quota while verifying API key: {e}")
+            return _api_key_verification_error_response(
+                "残高不足エラー: APIキーのデポジット残高が不足しています。残高を追加してください。",
+                "insufficient_quota",
+            )
+        slogger.warning(f"Rate limit while verifying API key: {e}")
+        return _api_key_verification_error_response(
+            "レート制限エラー: APIリクエストの制限を超えました。しばらく待ってから再試行してください。",
+            "rate_limit_error",
+        )
     except Exception as e:
         if google_exceptions is not None and isinstance(e, google_exceptions.Unauthenticated):
-            return {
-                "success": False,
-                "message": "認証エラー: APIキーが無効または期限切れです",
-                "error_detail": str(e),
-                "error_type": "authentication_error",
-            }
+            slogger.warning(f"Google authentication error while verifying API key: {e}")
+            return _api_key_verification_error_response(
+                "認証エラー: APIキーが無効または期限切れです",
+                "authentication_error",
+            )
         if google_exceptions is not None and isinstance(e, google_exceptions.ResourceExhausted):
-            return {
-                "success": False,
-                "message": "レート制限エラー: APIリクエストの制限を超えました。しばらく待ってから再試行してください。",
-                "error_detail": str(e),
-                "error_type": "rate_limit_error",
-            }
-        return {
-            "success": False,
-            "message": f"エラーが発生しました: {str(e)}",
-            "error_detail": str(e),
-            "error_type": "unknown_error",
-        }
+            slogger.warning(f"Google rate limit while verifying API key: {e}")
+            return _api_key_verification_error_response(
+                "レート制限エラー: APIリクエストの制限を超えました。しばらく待ってから再試行してください。",
+                "rate_limit_error",
+            )
+        slogger.error(f"Unknown error while verifying API key: {e}", exc_info=True)
+        return _api_key_verification_error_response(
+            "エラーが発生しました: APIの設定や接続を確認してください。",
+            "unknown_error",
+        )
 
 
 @router.get("/admin/llm-pricing")
