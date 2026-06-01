@@ -1,3 +1,6 @@
+// サーバー実行時の環境変数を読むため、Next.js の build-time 直値展開を避ける。
+const getServerEnv = (key: "API_BASEPATH" | "NEXT_PUBLIC_API_BASEPATH") => process.env[key] || "";
+
 /**
  * 実行環境に応じた適切なAPIのベースURLを取得する
  *
@@ -13,12 +16,13 @@ export const getApiBaseUrl = (): string => {
   }
 
   // サーバーサイドでAPI_BASEPATHが設定されている場合
-  if (process.env.API_BASEPATH) {
-    return process.env.API_BASEPATH;
+  const serverApiBasePath = getServerEnv("API_BASEPATH");
+  if (serverApiBasePath) {
+    return serverApiBasePath;
   }
 
   // それ以外の場合はNEXT_PUBLIC_API_BASEPATHを使用
-  return process.env.NEXT_PUBLIC_API_BASEPATH || "";
+  return getServerEnv("NEXT_PUBLIC_API_BASEPATH");
 };
 
 /**

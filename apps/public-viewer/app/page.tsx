@@ -1,16 +1,24 @@
+import { ApiConnectionError } from "@/components/ApiConnectionError";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Reporter } from "@/components/reporter/Reporter";
-import { ApiConnectionError } from "@/components/ApiConnectionError";
 import type { Meta, Report } from "@/type";
 import { Box, Card, HStack, Heading, Image, Text, VStack } from "@chakra-ui/react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { getApiBaseUrl } from "./utils/api";
+import { isStaticExportBuild } from "./utils/static-build";
 
 export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
+  if (!isStaticExportBuild()) {
+    return {
+      title: "広聴AI",
+    };
+  }
+
   try {
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`);
     const meta: Meta = await metaResponse.json();
@@ -42,6 +50,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Page() {
+  if (!isStaticExportBuild()) {
+    await connection();
+  }
+
   try {
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`);
     const reportsResponse = await fetch(`${getApiBaseUrl()}/reports`, {

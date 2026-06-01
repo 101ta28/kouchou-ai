@@ -5,11 +5,17 @@ on:
     branches: [main]
     paths:
       - 'apps/public-viewer/**'
+      - 'apps/shared/**'
+      - 'packages/report-schema/**'
+      - 'utils/dummy-server/**'
       - '!apps/public-viewer/**/*.md'
   pull_request:
     branches: [main]
     paths:
       - 'apps/public-viewer/**'
+      - 'apps/shared/**'
+      - 'packages/report-schema/**'
+      - 'utils/dummy-server/**'
       - '!apps/public-viewer/**/*.md'
   workflow_dispatch:
 
@@ -35,8 +41,78 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run build
+      - name: Run API-less dynamic build
         run: pnpm --filter @kouchou-ai/public-viewer build
+
+      - name: Start static export fixture API
+        run: |
+          node <<'NODE' &
+          const http = require("node:http");
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const root = process.cwd();
+          const report = fs.readFileSync(path.join(root, "utils/dummy-server/app/reports/example/hierarchical_result.json"), "utf8");
+          const meta = fs.readFileSync(path.join(root, "utils/dummy-server/public/meta/metadata.json"), "utf8");
+          const reports = JSON.stringify([
+            {
+              slug: "example",
+              status: "ready",
+              title: "[テスト]人類が人工知能を開発・展開する上で、最優先すべき課題は何でしょうか？",
+              description: "static export fixture",
+              isPubcom: true,
+              visibility: "public",
+            },
+          ]);
+
+          http
+            .createServer((request, response) => {
+              response.setHeader("Access-Control-Allow-Origin", "*");
+              response.setHeader("Content-Type", "application/json");
+
+              if (request.url === "/meta/metadata.json") {
+                response.end(meta);
+                return;
+              }
+
+              if (request.url === "/reports") {
+                response.end(reports);
+                return;
+              }
+
+              if (request.url === "/reports/example") {
+                response.end(report);
+                return;
+              }
+
+              response.statusCode = 404;
+              response.end(JSON.stringify({ error: "not found" }));
+            })
+            .listen(8002, "127.0.0.1");
+          NODE
+
+          for _ in {1..20}; do
+            if curl -fsS http://127.0.0.1:8002/meta/metadata.json >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "static export fixture API did not start" >&2
+          exit 1
+
+      - name: Run static export build
+        run: pnpm --filter @kouchou-ai/public-viewer build:static
         env:
-          NEXT_PUBLIC_API_BASEPATH: 'http://localhost:8000'
+          API_BASEPATH: 'http://127.0.0.1:8002'
+          NEXT_PUBLIC_API_BASEPATH: 'http://127.0.0.1:8002'
           NEXT_PUBLIC_PUBLIC_API_KEY: 'xxxxxxxxxx'
+
+      - name: Run Docker build
+        run: |
+          docker build --platform linux/amd64 \
+            -f ./apps/public-viewer/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_BASEPATH=http://localhost:8000 \
+            --build-arg NEXT_PUBLIC_PUBLIC_API_KEY=xxxxxxxxxx \
+            --build-arg API_BASEPATH=http://api:8000 \
+            -t kouchou-ai-public-viewer-ci .

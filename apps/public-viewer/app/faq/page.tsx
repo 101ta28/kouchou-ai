@@ -1,13 +1,19 @@
+import { ApiConnectionError } from "@/components/ApiConnectionError";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { ApiConnectionError } from "@/components/ApiConnectionError";
 import type { Meta } from "@/type";
 import { Box } from "@chakra-ui/react";
+import { connection } from "next/server";
 import { getApiBaseUrl } from "../utils/api";
+import { isStaticExportBuild } from "../utils/static-build";
 import { Contact } from "./Contact";
 import { Faq } from "./Faq";
 
 export default async function Page() {
+  if (!isStaticExportBuild()) {
+    await connection();
+  }
+
   try {
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, {
       next: { tags: ["meta"] },

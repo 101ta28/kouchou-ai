@@ -10,6 +10,7 @@ ENV NEXT_PUBLIC_API_BASEPATH=${NEXT_PUBLIC_API_BASEPATH}
 ENV NEXT_PUBLIC_PUBLIC_API_KEY=${NEXT_PUBLIC_PUBLIC_API_KEY}
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 ENV API_BASEPATH=${API_BASEPATH}
+ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/report-schema/package.json packages/report-schema/
@@ -21,6 +22,7 @@ COPY apps/shared apps/shared
 COPY apps/public-viewer apps/public-viewer
 
 RUN node_modules/.bin/tsc --project packages/report-schema/tsconfig.json
+RUN pnpm --filter @kouchou-ai/public-viewer build
 
 FROM node:22-alpine AS runner
 WORKDIR /repo
