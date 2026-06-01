@@ -11,6 +11,8 @@ const contentSecurityPolicy = buildCspHeaderValue({
   publicApiBasePath: process.env.NEXT_PUBLIC_API_BASEPATH,
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL,
   enableGoogleAnalytics,
+  // Plotly scattergl uses regl, which requires runtime eval during WebGL initialization.
+  allowUnsafeEval: true,
   isDevelopment: process.env.NODE_ENV !== "production",
 });
 

@@ -22,21 +22,24 @@ const nextConfig: NextConfig = {
 
 このモードでは、Next.js アプリ側で動的にレスポンスヘッダーを配る前提が弱くなるため、**CSP は配信先の CDN / リバースプロキシ / 静的ホスティング設定で付与する**のが基本です。
 
-特に Plotly の PNG ダウンロードでは、ブラウザが `blob:` URL を使って画像を書き出します。CSP の `img-src` に `blob:` が入っていないと、ダウンロード処理がブラウザにブロックされます。
+Plotly の散布図は `scattergl` を使っており、内部の regl が WebGL 描画コマンド生成で runtime eval を使います。そのため CSP の `script-src` に `'unsafe-eval'` が入っていないと、WebGL 対応ブラウザでも Plotly の初期化が失敗し、`WebGL is not supported...` が表示されることがあります。
+
+また、Plotly の PNG ダウンロードでは、ブラウザが `blob:` URL を使って画像を書き出します。CSP の `img-src` に `blob:` が入っていないと、ダウンロード処理がブラウザにブロックされます。
 
 ## 最低限必要な考え方
 
-静的エクスポート配信でまず確認すべきなのは次の 3 点です。
+静的エクスポート配信でまず確認すべきなのは次の 4 点です。
 
-1. `img-src` に `blob:` を含める
-2. `img-src` に `data:` を含める
-3. 静的サイトから外部 API や解析タグへ通信する場合は、必要な origin を `connect-src` や `script-src` に明示する
+1. `script-src` に `'unsafe-eval'` を含める
+2. `img-src` に `blob:` を含める
+3. `img-src` に `data:` を含める
+4. 静的サイトから外部 API や解析タグへ通信する場合は、必要な origin を `connect-src` や `script-src` に明示する
 
 最小構成の例:
 
 ```text
 default-src 'self';
-script-src 'self' 'unsafe-inline';
+script-src 'self' 'unsafe-inline' 'unsafe-eval';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
 font-src 'self' data:;
@@ -58,7 +61,7 @@ frame-ancestors 'none';
 ```text
 connect-src 'self' https://api.example.com https://www.google-analytics.com;
 img-src 'self' data: blob: https://images.example.com;
-script-src 'self' 'unsafe-inline' https://www.googletagmanager.com;
+script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com;
 ```
 
 ## Azure Static Web Apps
@@ -70,7 +73,7 @@ Azure Static Web Apps では、`staticwebapp.config.json` の `globalHeaders` �
 ```json
 {
   "globalHeaders": {
-    "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';"
+    "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';"
   }
 }
 ```
@@ -80,7 +83,7 @@ Azure Application Insights を使う場合は、必要に応じて `connect-src`
 例:
 
 ```text
-script-src 'self' 'unsafe-inline' https://js.monitor.azure.com;
+script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.monitor.azure.com;
 connect-src 'self' https://api.example.com https://js.monitor.azure.com https://*.applicationinsights.azure.com https://*.azurestaticapps.net;
 ```
 
@@ -92,7 +95,7 @@ Cloudflare Pages では、静的アセット配信に対して `_headers` ファ
 
 ```text
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';
 ```
 
 `public/` に `_headers` を置いておくと、ビルド後の出力ディレクトリへ一緒にコピーされる構成では運用しやすいです。ただし、この repo では API origin や analytics origin が環境ごとに違うので、**固定値の `_headers` をそのままコミットするより、デプロイ前に環境に合わせて生成・配置する運用**を推奨します。
@@ -111,7 +114,7 @@ server {
     root /var/www/kouchou-ai-public-viewer;
     index index.html;
 
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none';" always;
 
     location / {
         try_files $uri $uri/ /index.html;
@@ -131,6 +134,7 @@ CSP を変更した後は、少なくとも次を確認してください。
 
 1. レポート画面が通常表示できる
 2. Scatter / Treemap / 階層リストが崩れない
-3. PNG ダウンロードがブラウザ console の CSP エラーなしで動く
-4. 外部 API を使う構成なら、network error ではなく正常応答になる
-5. 外部画像や監視タグを使う構成なら、それらが CSP で落ちていない
+3. Scatter の `scattergl` が `WebGL is not supported...` 表示なしで描画される
+4. PNG ダウンロードがブラウザ console の CSP エラーなしで動く
+5. 外部 API を使う構成なら、network error ではなく正常応答になる
+6. 外部画像や監視タグを使う構成なら、それらが CSP で落ちていない

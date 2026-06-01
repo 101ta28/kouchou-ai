@@ -25,6 +25,13 @@ describe("CSP helpers", () => {
     expect(csp).toContain("connect-src 'self' http://18.233.19.158:8000 http://18.233.19.158:4000");
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
     expect(csp).toContain("font-src 'self' data: https://fonts.gstatic.com");
+    expect(csp).not.toContain("'unsafe-eval'");
+  });
+
+  it("allows unsafe-eval when explicitly enabled for Plotly scattergl", () => {
+    const csp = buildCspHeaderValue({ allowUnsafeEval: true });
+
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'unsafe-eval'");
   });
 
   it("adds Google Analytics origins only when enabled", () => {
