@@ -29,7 +29,7 @@ jobs:
     if: github.repository == 'digitaldemocracy2030/kouchou-ai'
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -244,6 +244,8 @@ jobs:
 
       - name: デプロイ確認
         run: |
+          set -euo pipefail
+
           if [ -z "$API_DOMAIN" ]; then
             echo "❌ APIドメインが取得できませんでした"
             exit 1
@@ -253,13 +255,69 @@ jobs:
             exit 1
           fi
 
-          # リトライ付きヘルスチェック
-          # public-viewer は起動時に next build を実行するため、初回起動が数分かかる場合がある
-          RETRY_COUNT=15
-          RETRY_INTERVAL=20
+          REVISION_READY_TIMEOUT_SECONDS=600
+          REVISION_READY_INTERVAL_SECONDS=20
+          SMOKE_RETRY_COUNT=12
+          SMOKE_RETRY_INTERVAL=10
 
-          for i in $(seq 1 $RETRY_COUNT); do
-            echo "ヘルスチェック試行 $i/$RETRY_COUNT..."
+          print_revision_status() {
+            local app="$1"
+            echo "${app} revision status:"
+            az containerapp revision list --name "$app" --resource-group "${AZURE_RESOURCE_GROUP}" \
+              --query "sort_by(@,&properties.createdTime)[-5:].{name:name,created:properties.createdTime,active:properties.active,health:properties.healthState,running:properties.runningState,details:properties.runningStateDetails,trafficWeight:properties.trafficWeight,replicas:properties.replicas}" \
+              -o table || true
+          }
+
+          print_recent_logs() {
+            local app="$1"
+            echo "${app} recent logs:"
+            az containerapp logs show --name "$app" --resource-group "${AZURE_RESOURCE_GROUP}" \
+              --tail 80 || true
+          }
+
+          wait_for_latest_revisions() {
+            local apps=("$@")
+            local deadline=$((SECONDS + REVISION_READY_TIMEOUT_SECONDS))
+
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              local all_ready=1
+
+              for app in "${apps[@]}"; do
+                local state latest ready provisioning
+                state="$(az containerapp show --name "$app" --resource-group "${AZURE_RESOURCE_GROUP}" \
+                  --query "[properties.latestRevisionName, properties.latestReadyRevisionName, properties.provisioningState]" \
+                  -o tsv)"
+                latest="$(printf '%s\n' "$state" | sed -n '1p')"
+                ready="$(printf '%s\n' "$state" | sed -n '2p')"
+                provisioning="$(printf '%s\n' "$state" | sed -n '3p')"
+
+                echo "${app}: latest=${latest:-<none>} ready=${ready:-<none>} provisioning=${provisioning:-<none>}"
+
+                if [ -z "$latest" ] || [ "$latest" != "$ready" ]; then
+                  all_ready=0
+                fi
+              done
+
+              if [ "$all_ready" -eq 1 ]; then
+                echo "✅ 全コンテナの latest revision が Ready になりました"
+                return 0
+              fi
+
+              sleep "$REVISION_READY_INTERVAL_SECONDS"
+            done
+
+            echo "❌ latest revision が Ready になる前に timeout しました"
+            for app in "${apps[@]}"; do
+              print_revision_status "$app"
+              print_recent_logs "$app"
+            done
+            exit 1
+          }
+
+          wait_for_latest_revisions api public-viewer admin static-site-builder
+
+          for i in $(seq 1 $SMOKE_RETRY_COUNT); do
+            echo "Smoke check 試行 $i/$SMOKE_RETRY_COUNT..."
             api_code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$API_DOMAIN/" || true)"
             viewer_code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "https://$PUBLIC_VIEWER_DOMAIN/" || true)"
             api_code="${api_code:-000}"
@@ -267,18 +325,71 @@ jobs:
             echo "  API=$api_code viewer=$viewer_code"
 
             if [ "$api_code" -ge 200 ] && [ "$api_code" -lt 400 ] && [ "$viewer_code" -ge 200 ] && [ "$viewer_code" -lt 400 ]; then
-              echo "✅ デプロイ成功: https://$API_DOMAIN"
-              echo "✅ デプロイ成功: https://$PUBLIC_VIEWER_DOMAIN"
-              exit 0
+              echo "✅ Root smoke check 成功"
+              break
             fi
-            [ $i -lt $RETRY_COUNT ] && sleep $RETRY_INTERVAL
+
+            if [ "$i" -eq "$SMOKE_RETRY_COUNT" ]; then
+              echo "❌ Root smoke check 失敗"
+              for app in api public-viewer; do
+                print_revision_status "$app"
+                print_recent_logs "$app"
+              done
+              exit 1
+            fi
+
+            sleep "$SMOKE_RETRY_INTERVAL"
           done
 
-          echo "❌ ヘルスチェック失敗"
-          echo "API revision status:"
-          az containerapp revision list --name api --resource-group ${AZURE_RESOURCE_GROUP} \
-            --query "sort_by(@,&properties.createdTime)[-1].{name:name,health:properties.healthState,running:properties.runningState,details:properties.runningStateDetails}" -o json || true
-          echo "public-viewer revision status:"
-          az containerapp revision list --name public-viewer --resource-group ${AZURE_RESOURCE_GROUP} \
-            --query "sort_by(@,&properties.createdTime)[-1].{name:name,health:properties.healthState,running:properties.runningState,details:properties.runningStateDetails}" -o json || true
-          exit 1
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          api_domain = os.environ["API_DOMAIN"]
+          viewer_domain = os.environ["PUBLIC_VIEWER_DOMAIN"]
+          public_api_key = os.environ["PUBLIC_API_KEY"]
+
+          request = urllib.request.Request(
+              f"https://{api_domain}/reports",
+              headers={"x-api-key": public_api_key, "Content-Type": "application/json"},
+          )
+
+          with urllib.request.urlopen(request, timeout=15) as response:
+              if response.status < 200 or response.status >= 400:
+                  raise RuntimeError(f"reports API returned {response.status}")
+              reports = json.load(response)
+
+          report = next(
+              (
+                  item
+                  for item in reports
+                  if item.get("slug")
+                  and item.get("status") == "ready"
+                  and item.get("visibility", "public") == "public"
+              ),
+              None,
+          )
+          if report is None:
+              raise RuntimeError("representative public ready report was not found")
+
+          report_url = f"https://{viewer_domain}/{report['slug']}/"
+          try:
+              with urllib.request.urlopen(report_url, timeout=15) as response:
+                  body = response.read().decode("utf-8", errors="replace")
+                  status = response.status
+          except urllib.error.HTTPError as error:
+              status = error.code
+              body = error.read().decode("utf-8", errors="replace")
+
+          if status < 200 or status >= 400:
+              raise RuntimeError(f"representative report returned {status}")
+          if any(marker in body for marker in ("API接続エラー", "Internal Server Error", "no-webgl")):
+              raise RuntimeError("representative report rendered an error marker")
+
+          print("✅ Representative report smoke check 成功")
+          PY
+
+          echo "✅ デプロイ成功: https://$API_DOMAIN"
+          echo "✅ デプロイ成功: https://$PUBLIC_VIEWER_DOMAIN"
