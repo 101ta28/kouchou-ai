@@ -30,6 +30,7 @@ type BuildCspOptions = {
   publicApiBasePath?: string;
   siteUrl?: string;
   enableGoogleAnalytics?: boolean;
+  allowUnsafeEval?: boolean;
   isDevelopment?: boolean;
 };
 
@@ -40,6 +41,7 @@ export const buildCspHeaderValue = ({
   publicApiBasePath,
   siteUrl,
   enableGoogleAnalytics = false,
+  allowUnsafeEval = false,
   isDevelopment = false,
 }: BuildCspOptions): string => {
   const remoteOrigins = extractAllowedOrigins([apiBasePath, publicApiBasePath, siteUrl]);
@@ -49,7 +51,7 @@ export const buildCspHeaderValue = ({
   const imgSrc = ["'self'", "data:", "blob:", ...remoteOrigins];
   const connectSrc = ["'self'", ...remoteOrigins];
 
-  if (isDevelopment) {
+  if (isDevelopment || allowUnsafeEval) {
     scriptSrc.push("'unsafe-eval'");
   }
 
