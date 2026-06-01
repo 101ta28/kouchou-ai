@@ -14,8 +14,9 @@ type Result =
     };
 
 export async function updateReportVisibility(slug: string, visibility: ReportVisibility): Promise<Result> {
+  const encodedSlug = encodeURIComponent(slug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/visibility`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedSlug}/visibility`, {
       method: "PATCH",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

@@ -15,8 +15,9 @@ type JsonDownloadResult =
     };
 
 export async function jsonDownload(slug: string): Promise<JsonDownloadResult> {
+  const encodedSlug = encodeURIComponent(slug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${slug}/json`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedSlug}/json`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
         "Content-Type": "application/json",

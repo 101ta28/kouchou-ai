@@ -168,6 +168,19 @@ class TestVerifyApiKey:
             _, kwargs = mock_request.call_args
             assert kwargs["user_api_key"] == "user-test-key"
 
+    def test_verify_api_key_does_not_expose_exception_detail(self, client):
+        with patch("analysis_core.services.llm.request_to_chat_ai") as mock_request:
+            mock_request.side_effect = RuntimeError("secret stack detail")
+
+            response = client.get("/admin/environment/verify?provider=openai", headers={"x-api-key": "test-api-key"})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert data["error_type"] == "unknown_error"
+            assert "secret stack detail" not in data["message"]
+            assert "secret stack detail" not in data["error_detail"]
+
 
 class TestDownloadReportJson:
     def test_download_report_json_success(self, client, tmp_path):

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import archiver from "archiver";
 import express from "express";
+import rateLimit from "express-rate-limit";
 
 const execAsync = promisify(exec);
 const __filename = fileURLToPath(import.meta.url);
@@ -14,21 +15,34 @@ const clientDir = join(__dirname, "../../public-viewer");
 const outDir = join(clientDir, "out");
 
 const ZIP_FILE_NAME = "kouchou-ai.zip";
+const BUILD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const BUILD_RATE_LIMIT_MAX_REQUESTS = 5;
 
 const app = express();
+const buildRateLimiter = rateLimit({
+  windowMs: BUILD_RATE_LIMIT_WINDOW_MS,
+  limit: BUILD_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    status: "error",
+    message: "Too many build requests. Please try again later.",
+  },
+});
 
 app.use(express.json());
 
-app.post("/build", async (req, res) => {
+app.post("/build", buildRateLimiter, async (req, res) => {
   try {
     console.log("Build request received");
+    const buildSlugs = typeof req.body.slugs === "string" ? req.body.slugs : "";
     const { stdout, stderr } = await execAsync("pnpm run build:static", {
       cwd: clientDir,
       env: {
         ...process.env,
         PATH: process.env.PATH ?? "",
         NODE_ENV: "production",
-        BUILD_SLUGS: req.body.slugs || ""
+        BUILD_SLUGS: buildSlugs,
       },
     });
 
@@ -49,7 +63,7 @@ app.post("/build", async (req, res) => {
     console.error("Build or Zip error:", err);
     res.status(500).json({
       status: "error",
-      message: err instanceof Error ? err.message : String(err),
+      message: "Build failed",
     });
   }
 });

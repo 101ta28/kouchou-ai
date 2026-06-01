@@ -28,6 +28,7 @@ export function useReportProgressPoll(slug: string) {
   useEffect(() => {
     if (!isPolling) return;
 
+    const encodedSlug = encodeURIComponent(slug);
     let cancelled = false;
     let retryCount = 0;
     const maxRetries = 10;
@@ -36,15 +37,18 @@ export function useReportProgressPoll(slug: string) {
       if (cancelled) return;
 
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/reports/${slug}/status/step-json`, {
-          headers: {
-            "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
-            "Content-Type": "application/json",
-            // キャッシュを防止するためのヘッダーを追加
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASEPATH}/admin/reports/${encodedSlug}/status/step-json`,
+          {
+            headers: {
+              "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
+              "Content-Type": "application/json",
+              // キャッシュを防止するためのヘッダーを追加
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+            },
           },
-        });
+        );
 
         if (response.ok) {
           const data = (await response.json()) as StepJsonResponse;

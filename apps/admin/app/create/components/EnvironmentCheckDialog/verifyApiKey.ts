@@ -14,6 +14,7 @@ type VerificationResult = {
 
 export const verifyApiKey = async (provider: string, userApiKey?: string) => {
   try {
+    const encodedProvider = encodeURIComponent(provider);
     const headers: Record<string, string> = {
       "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
       "Content-Type": "application/json",
@@ -23,7 +24,7 @@ export const verifyApiKey = async (provider: string, userApiKey?: string) => {
       headers["x-user-api-key"] = userApiKey;
     }
 
-    const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify?provider=${provider}`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify?provider=${encodedProvider}`, {
       method: "GET",
       headers,
     });
@@ -44,7 +45,8 @@ export const verifyApiKey = async (provider: string, userApiKey?: string) => {
 
 export const verifyChatGptApiKeyWithProvider = async (provider = "openai") => {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify-chatgpt?provider=${provider}`, {
+    const encodedProvider = encodeURIComponent(provider);
+    const response = await fetch(`${getApiBaseUrl()}/admin/environment/verify-chatgpt?provider=${encodedProvider}`, {
       method: "GET",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

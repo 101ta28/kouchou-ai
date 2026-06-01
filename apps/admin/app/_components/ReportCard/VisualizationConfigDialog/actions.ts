@@ -14,8 +14,9 @@ type FetchVisualizationConfigResult =
     };
 
 export async function fetchVisualizationConfig(reportSlug: string): Promise<FetchVisualizationConfigResult> {
+  const encodedReportSlug = encodeURIComponent(reportSlug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedReportSlug}/visualization-config`, {
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",
       },
@@ -42,8 +43,9 @@ export async function updateVisualizationConfig(
   reportSlug: string,
   config: ReportDisplayConfig,
 ): Promise<UpdateVisualizationConfigResult> {
+  const encodedReportSlug = encodeURIComponent(reportSlug);
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${reportSlug}/visualization-config`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedReportSlug}/visualization-config`, {
       method: "PATCH",
       headers: {
         "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY || "",

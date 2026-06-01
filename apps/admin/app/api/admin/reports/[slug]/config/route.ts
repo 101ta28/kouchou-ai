@@ -16,8 +16,9 @@ export async function GET(_: Request, context: { params: Promise<{ slug: string 
   }
 
   const { slug } = await context.params;
+  const encodedSlug = encodeURIComponent(slug);
   try {
-    const response = await fetch(`${baseUrl}/admin/reports/${slug}/config`, {
+    const response = await fetch(`${baseUrl}/admin/reports/${encodedSlug}/config`, {
       headers: {
         "x-api-key": adminApiKey,
       },
@@ -26,7 +27,7 @@ export async function GET(_: Request, context: { params: Promise<{ slug: string 
     const data = await response.json().catch(() => ({}));
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to fetch report config";
-    return NextResponse.json({ detail: message }, { status: 500 });
+    console.error("Failed to fetch report config", error);
+    return NextResponse.json({ detail: "Failed to fetch report config" }, { status: 500 });
   }
 }

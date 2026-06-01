@@ -27,6 +27,7 @@ export async function duplicateReport(sourceSlug: string, params: DuplicateParam
   if (!adminApiKey) {
     throw new Error("ADMIN_API_KEY is not set");
   }
+  const encodedSourceSlug = encodeURIComponent(sourceSlug);
 
   const body: Record<string, unknown> = {
     reuse: { enabled: params.reuseEnabled },
@@ -41,7 +42,7 @@ export async function duplicateReport(sourceSlug: string, params: DuplicateParam
   }
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${sourceSlug}/duplicate`, {
+    const response = await fetch(`${getApiBaseUrl()}/admin/reports/${encodedSourceSlug}/duplicate`, {
       method: "POST",
       headers: {
         "x-api-key": adminApiKey,
