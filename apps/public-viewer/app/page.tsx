@@ -14,9 +14,7 @@ export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
   if (!isStaticExportBuild()) {
-    return {
-      title: "広聴AI",
-    };
+    await connection();
   }
 
   try {
