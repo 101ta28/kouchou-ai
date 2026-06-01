@@ -24,6 +24,10 @@ type PageProps = {
 export const revalidate = 300;
 
 export async function generateStaticParams() {
+  if (!isStaticExportBuild()) {
+    return [];
+  }
+
   let reports: Report[];
 
   try {
@@ -49,6 +53,12 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (!isStaticExportBuild()) {
+    return {
+      title: "広聴AI",
+    };
+  }
+
   try {
     const slug = (await params).slug;
     const metaResponse = await fetch(`${getApiBaseUrl()}/meta/metadata.json`, {
