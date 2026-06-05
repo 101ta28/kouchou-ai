@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from analysis_core.core import update_progress
+from analysis_core.core.utils import read_input_csv
 from analysis_core.services.llm import request_to_chat_ai
 from analysis_core.services.parse_json_list import parse_extraction_response
 
@@ -69,10 +70,10 @@ def extraction(config):
 
     # カラム名だけを読み込み、必要なカラムが含まれているか確認する
     input_path = f"{input_base_dir}/{config['input']}.csv"
-    comments = pl.read_csv(input_path, n_rows=0)
+    comments = read_input_csv(input_path, n_rows=0)
     _validate_property_columns(property_columns, comments)
     # エラーが出なかった場合、すべての行を読み込む
-    comments = pl.read_csv(input_path, columns=["comment-id", "comment-body"] + config["extraction"]["properties"])
+    comments = read_input_csv(input_path, columns=["comment-id", "comment-body"] + config["extraction"]["properties"])
 
     # 空文字列・空白のみのコメントを除外する (#583)
     comments = _filter_empty_comments(comments)

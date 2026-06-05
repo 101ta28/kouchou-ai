@@ -553,6 +553,22 @@ class TestValidateInputFile:
         with pytest.raises(RuntimeError, match="extraction.properties"):
             validate_input_file({"input": "demo", "extraction": {"properties": ["source"]}}, tmp_path)
 
+    def test_validate_input_file_accepts_mixed_type_property_column(self, tmp_path):
+        """Validation should treat input property columns as categorical strings."""
+        from analysis_core.core.orchestration import validate_input_file
+
+        input_path = tmp_path / "demo.csv"
+        input_path.write_text(
+            "comment-id,comment-body,attribute_group\n"
+            "1,first,1\n"
+            "2,second,label-a\n",
+            encoding="utf-8",
+        )
+
+        path = validate_input_file({"input": "demo", "extraction": {"properties": ["attribute_group"]}}, tmp_path)
+
+        assert path == input_path
+
     def test_validate_input_file_skips_when_plan_does_not_need_input(self, tmp_path):
         """Visualization-only runs should not require the input CSV."""
         from analysis_core.core.orchestration import validate_input_file

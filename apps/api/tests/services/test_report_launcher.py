@@ -1,7 +1,7 @@
 import subprocess
 import threading
 
-from src.schemas.admin_report import Prompt, ReportInput
+from src.schemas.admin_report import Comment, Prompt, ReportInput
 
 
 class DummyThread:
@@ -46,6 +46,26 @@ def patch_subprocess_launch(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", DummyPopen)
     monkeypatch.setattr(threading, "Thread", DummyThread)
     return called
+
+
+def test_save_input_file_writes_mixed_type_attributes_as_csv(tmp_path, monkeypatch):
+    from src.services import report_launcher
+
+    monkeypatch.setattr(report_launcher.settings, "INPUT_DIR", tmp_path)
+    report_input = make_report_input(
+        input="demo",
+        comments=[
+            Comment(id="c1", comment="first", attribute_group=1),
+            Comment(id="c2", comment="second", attribute_group="label-a"),
+        ],
+    )
+
+    input_path = report_launcher.save_input_file(report_input)
+
+    lines = input_path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "comment-id,comment-body,source,url,attribute_group"
+    assert lines[1].endswith(",1")
+    assert lines[2].endswith(",label-a")
 
 
 def test_user_api_key_propagation_to_env(monkeypatch):

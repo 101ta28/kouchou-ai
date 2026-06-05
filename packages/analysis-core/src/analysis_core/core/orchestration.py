@@ -14,8 +14,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-import polars as pl
 from dotenv import load_dotenv
+
+from analysis_core.core.utils import read_input_csv
 
 # Default specs - can be overridden
 _specs: list[dict[str, Any]] = []
@@ -293,7 +294,7 @@ def validate_input_file(config: dict[str, Any], input_base_dir: Path, plan: list
         raise RuntimeError(f"Input CSV not found: {input_path}")
 
     try:
-        comments = pl.read_csv(input_path, n_rows=0)
+        comments = read_input_csv(input_path, n_rows=0)
     except Exception as exc:
         raise RuntimeError(f"Failed to read input CSV header: {input_path}") from exc
 
