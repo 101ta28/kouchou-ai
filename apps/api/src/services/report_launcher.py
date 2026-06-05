@@ -124,7 +124,11 @@ def save_input_file(report_input: ReportInput) -> Path:
 
     input_path = settings.INPUT_DIR / f"{report_input.input}.csv"
     input_path.parent.mkdir(parents=True, exist_ok=True)
-    df = pl.DataFrame(comments)
+    schema = {"comment-id": pl.Utf8, "comment-body": pl.Utf8, "source": pl.Utf8, "url": pl.Utf8}
+    for comment_data in comments:
+        for key in comment_data:
+            schema.setdefault(key, pl.Utf8)
+    df = pl.DataFrame(comments, schema=schema)
     df.write_csv(input_path)
     return input_path
 

@@ -4,6 +4,22 @@ Utility functions for the analysis pipeline.
 Migrated from apps/api/broadlistening/pipeline/utils.py
 """
 
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+
+
+def read_input_csv(path: str | Path, **kwargs: Any) -> pl.DataFrame:
+    """Read user-provided input CSV columns as strings.
+
+    Input metadata columns are categorical labels, not numeric measures. Keeping
+    them as strings avoids Polars inferring a numeric dtype from early rows and
+    then failing when later rows contain non-numeric labels.
+    """
+    kwargs.setdefault("infer_schema_length", 0)
+    return pl.read_csv(path, **kwargs)
+
 
 def typed_message(t: str, m: str) -> dict[str, str]:
     """

@@ -7,6 +7,8 @@ from typing import Any, TypedDict
 import numpy as np
 import polars as pl
 
+from analysis_core.core.utils import read_input_csv
+
 
 def json_serialize_numpy(obj: Any) -> Any:
     """
@@ -83,7 +85,7 @@ def hierarchical_aggregation(config) -> bool:
         arguments = pl.read_csv(f"{output_base_dir}/{config['output_dir']}/args.csv")
         arg_num = len(arguments)
         relation_df = pl.read_csv(f"{output_base_dir}/{config['output_dir']}/relations.csv")
-        comments = pl.read_csv(f"{input_base_dir}/{config['input']}.csv")
+        comments = read_input_csv(f"{input_base_dir}/{config['input']}.csv")
         clusters = pl.read_csv(f"{output_base_dir}/{config['output_dir']}/hierarchical_clusters.csv")
         labels = pl.read_csv(f"{output_base_dir}/{config['output_dir']}/hierarchical_merge_labels.csv")
 
@@ -128,7 +130,7 @@ def create_custom_intro(config):
 
     dataset = config["output_dir"]
     args_path = f"{output_base_dir}/{dataset}/args.csv"
-    comments = pl.read_csv(f"{input_base_dir}/{config['input']}.csv")
+    comments = read_input_csv(f"{input_base_dir}/{config['input']}.csv")
     result_path = f"{output_base_dir}/{dataset}/hierarchical_result.json"
 
     input_count = len(comments)
@@ -193,7 +195,7 @@ def add_original_comments(labels, arguments, relation_df, clusters, config):
     merged = merged.join(relation_df, on="arg-id", how="left")
 
     # 元コメント取得
-    comments = pl.read_csv(f"{input_base_dir}/{config['input']}.csv")
+    comments = read_input_csv(f"{input_base_dir}/{config['input']}.csv")
     comments = comments.with_columns(pl.col("comment-id").cast(pl.Utf8))
     merged = merged.with_columns(pl.col("comment-id").cast(pl.Utf8))
 
