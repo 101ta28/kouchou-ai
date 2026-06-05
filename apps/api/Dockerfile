@@ -25,7 +25,7 @@ COPY packages/analysis-core /packages/analysis-core
 # torch is resolved as a transitive dependency of analysis-core.
 # For CPU mode, use the PyTorch CPU-only index as --extra-index-url so it takes
 # priority over the primary PyPI index (uv searches extra indexes first).
-RUN set -- /packages/analysis-core && \
+RUN set -- "/packages/analysis-core[full]" && \
     if [ "$ENVIRONMENT" = "development" ]; then \
         set -- "$@" -r requirements-dev.lock; \
     else \
