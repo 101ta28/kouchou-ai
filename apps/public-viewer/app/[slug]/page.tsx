@@ -194,7 +194,7 @@ function ReportPage({
                   {scenario.useCase}のサンプル
                 </Text>
               </Card.Title>
-              <Card.Description>
+              <Box color="fg.muted">
                 <Text mb={3}>想定読者: {scenario.audience}</Text>
                 <Text mb={4}>{scenario.readGuide}</Text>
                 <HStack>
@@ -206,7 +206,7 @@ function ReportPage({
                   </Button>
                 </HStack>
                 {scenario.dataGuide && <SampleDataGuide scenario={scenario} result={result} />}
-              </Card.Description>
+              </Box>
             </Card.Body>
           </Card.Root>
         )}
