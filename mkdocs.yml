@@ -77,6 +77,12 @@ nav:
       - CLIクイックスタート: user-guide/cli-quickstart.md
       - インポート方法: user-guide/import-quickstart.md
       - FAQ: user-guide/faq.md
+  - ユースケース:
+      - 概要: use-cases/index.md
+      - 地域交通の見直し: use-cases/local-transport.md
+      - 子育て支援アンケート: use-cases/childcare-support.md
+      - パブリックコメント整理: use-cases/public-comment.md
+      - 入力データガイド: use-cases/input-data-guide.md
   - 開発者向け:
       - コントリビューション: development/contributing.md
       - Claude Code/Codex スキル: development/ai-assistants.md
@@ -112,6 +118,7 @@ nav:
       - Azure デプロイ: deployment/azure.md
       - Azure Blob Storage: deployment/azure-blob-storage.md
       - GitHub Pages: deployment/github-pages.md
+      - 閲覧専用サンプルサイト: deployment/sample-viewer-vercel.md
   - その他:
       - プロジェクト一覧: misc/projects.md
       - CLA: misc/cla.md
