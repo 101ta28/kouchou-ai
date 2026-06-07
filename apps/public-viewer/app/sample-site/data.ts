@@ -116,6 +116,62 @@ type ExpandedComment = {
   attributes?: Record<string, string>;
 };
 
+const expansionContexts = [
+  "同じ立場の利用者からも",
+  "別の地区の回答でも",
+  "説明会後の意見としても",
+  "家族や支援者の視点でも",
+  "日常的に利用する人からも",
+  "初めて制度を調べた人からも",
+  "平日昼間に動きづらい人からも",
+  "地域活動に関わる人からも",
+];
+
+const expansionReasons = [
+  "利用する時間帯や曜日で困り方が変わるため",
+  "情報の届き方に個人差があるため",
+  "費用負担と手続きの分かりやすさが利用を左右するため",
+  "地区ごとの距離や交通手段の違いが大きいため",
+  "急な予定変更に対応できるかが重要なため",
+  "家族に頼れない場合の選択肢が必要なため",
+  "窓口、紙、Webのどれでも確認できることが大切なため",
+  "実際の生活動線に合う運用でないと使い続けにくいため",
+];
+
+const expansionRequests = [
+  "具体的な運用条件まで示してほしいです。",
+  "地域別の影響を確認してから判断してほしいです。",
+  "試行期間を設けて利用者の声を再確認してほしいです。",
+  "対象者に届く案内方法も合わせて検討してほしいです。",
+  "必要な人が使えなくならないよう段階的に見直してほしいです。",
+  "利用実績だけでなく困っている人の声も判断材料にしてほしいです。",
+  "変更後の問い合わせ先と代替手段を分かりやすく示してほしいです。",
+  "関係する部署や地域団体と連携して改善してほしいです。",
+];
+
+const buildExpandedText = (comment: string, index: number, cycle: number, attributes?: Record<string, string>) => {
+  if (cycle === 0) {
+    return comment;
+  }
+
+  const area = attributes?.area ?? attributes?.district ?? "";
+  const stakeholder =
+    attributes?.stakeholder ?? attributes?.caregiver_type ?? attributes?.position ?? attributes?.age_group ?? "";
+  const attributePrefix =
+    area && stakeholder
+      ? `${area}の${stakeholder}からは、`
+      : area
+        ? `${area}からは、`
+        : stakeholder
+          ? `${stakeholder}からは、`
+          : "";
+  const seed = index + cycle * 13;
+
+  return `${comment} ${attributePrefix}${expansionContexts[seed % expansionContexts.length]}、${
+    expansionReasons[(seed + 3) % expansionReasons.length]
+  }、${expansionRequests[(seed + 5) % expansionRequests.length]}`;
+};
+
 const expandComments = (scenario: CatalogScenario): ExpandedComment[] => {
   const targetCount = scenario.targetCommentCount ?? scenario.comments.length;
 
@@ -125,7 +181,7 @@ const expandComments = (scenario: CatalogScenario): ExpandedComment[] => {
     const offset = ((cycle % 9) - 4) * 0.015;
 
     return {
-      comment: cycle === 0 ? comment : `${comment}（同種意見 ${cycle + 1}）`,
+      comment: buildExpandedText(comment, index, cycle, attributes),
       clusterIds,
       x: x + offset,
       y: y - offset,
