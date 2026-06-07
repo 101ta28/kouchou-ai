@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
-import { buildCspHeaderValue } from "../shared/csp";
+import { buildCspHeaderValue } from "./csp";
 
 const isStaticExport = process.env.NEXT_PUBLIC_OUTPUT_MODE === "export";
 const BASE_PATH = process.env.NEXT_PUBLIC_STATIC_EXPORT_BASE_PATH || "";

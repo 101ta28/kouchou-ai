@@ -126,9 +126,6 @@ importers:
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.2.8)(react@19.2.3)
-      '@kouchou-ai/report-schema':
-        specifier: workspace:*
-        version: link:../../packages/report-schema
       '@next/third-parties':
         specifier: ^15.2.4
         version: 15.5.4(next@16.2.6(@playwright/test@1.57.0)(babel-plugin-macros@3.1.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
@@ -141,6 +138,9 @@ importers:
       next-themes:
         specifier: ^0.4.4
         version: 0.4.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      plotly.js:
+        specifier: ^3.3.1
+        version: 3.3.1(mapbox-gl@1.13.3)
       react:
         specifier: ^19.2.1
         version: 19.2.3

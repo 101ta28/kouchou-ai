@@ -1,0 +1,4 @@
+{
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "NEXT_PUBLIC_SAMPLE_SITE=true npm run build"
+}

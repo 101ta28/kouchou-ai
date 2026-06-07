@@ -7,12 +7,20 @@ import { Box, Card, HStack, Heading, Image, Text, VStack } from "@chakra-ui/reac
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
+import { isSampleSiteEnabled, sampleMeta, sampleReports } from "./sample-site/data";
 import { getApiBaseUrl } from "./utils/api";
 import { isStaticExportBuild } from "./utils/static-build";
 
 export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
+  if (isSampleSiteEnabled()) {
+    return {
+      title: "広聴AI サンプルレポート",
+      description: sampleMeta.message,
+    };
+  }
+
   if (!isStaticExportBuild()) {
     await connection();
   }
@@ -48,6 +56,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Page() {
+  if (isSampleSiteEnabled()) {
+    return <ReportListPage meta={sampleMeta} reports={sampleReports} isSampleSite />;
+  }
+
   if (!isStaticExportBuild()) {
     await connection();
   }
@@ -67,62 +79,84 @@ export default async function Page() {
       reports = reports.filter((report) => process.env.BUILD_SLUGS?.split(",").includes(report.slug));
     }
 
-    return (
-      <>
-        <Header />
-        <Box className="container">
-          <Box mx={"auto"} maxW={"1024px"} mb={10} mt="8">
-            <Box mb="12">
-              <Reporter meta={meta} />
-            </Box>
-            <Heading textAlign={"left"} fontSize={"xl"} mb={8}>
-              レポート一覧
-            </Heading>
-            {reports.length === 0 ? (
-              <EmptyState />
-            ) : (
-              reports.map((report) => (
-                <Link key={report.slug} href={`/${report.slug}`}>
-                  <Card.Root
-                    size="md"
-                    key={report.slug}
-                    mb={4}
-                    borderLeftWidth={10}
-                    borderLeftColor={meta.brandColor || "#2577b1"}
-                    cursor={"pointer"}
-                    className={"shadow"}
-                  >
-                    <Card.Body>
-                      <HStack>
-                        <Box>
-                          <Card.Title>
-                            <Text fontSize={"lg"} color={"#2577b1"} mb={1} lineClamp="2">
-                              {report.title}
-                            </Text>
-                          </Card.Title>
-                          {report.createdAt && (
-                            <Text fontSize={"xs"} color={"gray.500"} mb={1}>
-                              作成日時: {new Date(report.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
-                            </Text>
-                          )}
-                          <Card.Description lineClamp={{ base: 3, md: 2 }}>{report.description || ""}</Card.Description>
-                        </Box>
-                      </HStack>
-                    </Card.Body>
-                  </Card.Root>
-                </Link>
-              ))
-            )}
-          </Box>
-        </Box>
-        <Footer meta={meta} />
-      </>
-    );
+    return <ReportListPage meta={meta} reports={reports} />;
   } catch (e) {
     const apiUrl = getApiBaseUrl();
     const errorMessage = e instanceof Error ? e.message : String(e);
     return <ApiConnectionError apiUrl={apiUrl} errorMessage={errorMessage} isServerSide={true} />;
   }
+}
+
+function ReportListPage({
+  meta,
+  reports,
+  isSampleSite = false,
+}: { meta: Meta; reports: Report[]; isSampleSite?: boolean }) {
+  return (
+    <>
+      <Header />
+      <Box className="container">
+        <Box mx={"auto"} maxW={"1024px"} mb={10} mt="8">
+          <Box mb="12">
+            <Reporter meta={meta} />
+          </Box>
+          {isSampleSite && (
+            <Card.Root size="md" mb={8} borderLeftWidth={10} borderLeftColor={meta.brandColor || "#2577b1"}>
+              <Card.Body>
+                <Card.Title>
+                  <Text fontSize="lg" fontWeight="bold" mb={2}>
+                    閲覧専用のサンプルサイトです
+                  </Text>
+                </Card.Title>
+                <Card.Description>
+                  架空データを使ったサンプルレポートを掲載しています。CSVアップロード、レポート生成、APIキー入力はできません。
+                </Card.Description>
+              </Card.Body>
+            </Card.Root>
+          )}
+          <Heading textAlign={"left"} fontSize={"xl"} mb={8}>
+            レポート一覧
+          </Heading>
+          {reports.length === 0 ? (
+            <EmptyState />
+          ) : (
+            reports.map((report) => (
+              <Link key={report.slug} href={`/${report.slug}`}>
+                <Card.Root
+                  size="md"
+                  key={report.slug}
+                  mb={4}
+                  borderLeftWidth={10}
+                  borderLeftColor={meta.brandColor || "#2577b1"}
+                  cursor={"pointer"}
+                  className={"shadow"}
+                >
+                  <Card.Body>
+                    <HStack>
+                      <Box>
+                        <Card.Title>
+                          <Text fontSize={"lg"} color={"#2577b1"} mb={1} lineClamp="2">
+                            {report.title}
+                          </Text>
+                        </Card.Title>
+                        {report.createdAt && (
+                          <Text fontSize={"xs"} color={"gray.500"} mb={1}>
+                            作成日時: {new Date(report.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                          </Text>
+                        )}
+                        <Card.Description lineClamp={{ base: 3, md: 2 }}>{report.description || ""}</Card.Description>
+                      </Box>
+                    </HStack>
+                  </Card.Body>
+                </Card.Root>
+              </Link>
+            ))
+          )}
+        </Box>
+      </Box>
+      <Footer meta={meta} />
+    </>
+  );
 }
 
 const EmptyState = () => {

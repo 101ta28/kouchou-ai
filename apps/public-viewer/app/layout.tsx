@@ -1,6 +1,7 @@
 import { getImageFromServerSrc } from "@/app/utils/image-src";
 import { Provider } from "@/components/ui/provider";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { isSampleSiteEnabled } from "./sample-site/data";
 import "./global.css";
 
 const enableGA =
@@ -15,7 +16,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic&display=swap" rel="stylesheet" />
 
-        <link rel={"icon"} href={getImageFromServerSrc("/meta/icon.png")} sizes={"any"} />
+        <link
+          rel={"icon"}
+          href={
+            isSampleSiteEnabled() ? getImageFromServerSrc("/images/logo.svg") : getImageFromServerSrc("/meta/icon.png")
+          }
+          sizes={"any"}
+        />
 
         {enableGA && <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || ""} />}
       </head>

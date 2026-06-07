@@ -1,3 +1,4 @@
+import { isSampleSiteEnabled, sampleResults } from "@/app/sample-site/data";
 import { getApiBaseUrl } from "@/app/utils/api";
 import { getClusterNum } from "@/app/utils/cluster-num";
 import type { Result } from "@/type";
@@ -68,20 +69,57 @@ async function fetchApiWithRetry(url: string, options: RequestInit, retries = 5,
 }
 
 export const OpImage = async (slug: string) => {
-  // Use the retry function for the API fetch
-  const [font400, font700, apiResponse] = await Promise.all([
-    fetchFont(400),
-    fetchFont(700),
-    fetchApiWithRetry(`${getApiBaseUrl()}/reports/${slug}`, {
-      headers: {
-        "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
-        "Content-Type": "application/json",
-      },
-    }),
-  ]);
+  const sampleMode = isSampleSiteEnabled();
+  const result = sampleMode
+    ? sampleResults[slug]
+    : await fetchApiWithRetry(`${getApiBaseUrl()}/reports/${slug}`, {
+        headers: {
+          "x-api-key": process.env.NEXT_PUBLIC_PUBLIC_API_KEY || "",
+          "Content-Type": "application/json",
+        },
+      }).then((response) => response.json() as Promise<Result>);
 
-  // 成功したレスポンスからJSONを解析する。
-  const result: Result = await apiResponse.json();
+  if (!result) {
+    throw new Error(`Report not found: ${slug}`);
+  }
+
+  if (sampleMode) {
+    return new ImageResponse(
+      <div
+        style={{
+          background: "linear-gradient(to right, #f9c8a0, #f7c5da)",
+          width: "100%",
+          height: "100%",
+          padding: "64px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          fontFamily: "sans-serif",
+        }}
+      >
+        <div style={{ fontSize: 64, fontWeight: 700 }}>Kouchou AI Sample Report</div>
+        <div style={{ fontSize: 36, fontWeight: 400 }}>{slug}</div>
+      </div>,
+      size,
+    );
+  }
+
+  const fonts = sampleMode
+    ? []
+    : await Promise.all([fetchFont(400), fetchFont(700)]).then(([font400, font700]) => [
+        {
+          name: "Noto Sans JP",
+          data: font400,
+          style: "normal" as const,
+          weight: 400 as const,
+        },
+        {
+          name: "Noto Sans JP",
+          data: font700,
+          style: "normal" as const,
+          weight: 700 as const,
+        },
+      ]);
 
   const clusterNum = getClusterNum(result);
   const pageTitle = result.config.question;
@@ -118,20 +156,7 @@ export const OpImage = async (slug: string) => {
     </div>,
     {
       ...size,
-      fonts: [
-        {
-          name: "Noto Sans JP",
-          data: font400,
-          style: "normal",
-          weight: 400,
-        },
-        {
-          name: "Noto Sans JP",
-          data: font700,
-          style: "normal",
-          weight: 700,
-        },
-      ],
+      ...(fonts.length > 0 ? { fonts } : {}),
     },
   );
 };

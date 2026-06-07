@@ -8,9 +8,11 @@ import { Overview } from "@/components/report/Overview";
 import { Reporter } from "@/components/reporter/Reporter";
 import type { Meta, Report, Result } from "@/type";
 import { ReportVisibility } from "@/type";
-import { Box, Separator } from "@chakra-ui/react";
+import { Box, Button, Card, HStack, Separator, Text } from "@chakra-ui/react";
+import { DownloadIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getSampleScenario, isSampleSiteEnabled, sampleMeta, sampleReports, sampleResults } from "../sample-site/data";
 import { getApiBaseUrl } from "../utils/api";
 import { createStaticBuildFetchError, getStaticBuildReportSlugs, isStaticExportBuild } from "../utils/static-build";
 
@@ -24,6 +26,10 @@ type PageProps = {
 export const revalidate = 300;
 
 export async function generateStaticParams() {
+  if (isSampleSiteEnabled()) {
+    return sampleReports.map((report) => ({ slug: report.slug }));
+  }
+
   if (!isStaticExportBuild()) {
     return [];
   }
@@ -53,6 +59,19 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (isSampleSiteEnabled()) {
+    const slug = (await params).slug;
+    const result = sampleResults[slug];
+    if (!result) {
+      return {};
+    }
+
+    return {
+      title: `${result.config.question} - ${sampleMeta.reporter}`,
+      description: result.overview,
+    };
+  }
+
   if (!isStaticExportBuild()) {
     return {
       title: "広聴AI",
@@ -113,6 +132,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function Page({ params }: PageProps) {
   const slug = (await params).slug;
+
+  if (isSampleSiteEnabled()) {
+    const result = sampleResults[slug];
+    if (!result) {
+      notFound();
+    }
+
+    return <ReportPage meta={sampleMeta} result={result} scenario={getSampleScenario(slug)} />;
+  }
+
   const apiUrl = getApiBaseUrl();
 
   let metaResponse: Response;
@@ -141,10 +170,45 @@ export default async function Page({ params }: PageProps) {
   const meta: Meta = await metaResponse.json();
   const result: Result = await resultResponse.json();
 
+  return <ReportPage meta={meta} result={result} />;
+}
+
+function ReportPage({
+  meta,
+  result,
+  scenario,
+}: {
+  meta: Meta;
+  result: Result;
+  scenario?: ReturnType<typeof getSampleScenario>;
+}) {
   return (
     <>
       <Header />
       <Box className="container" mt="8">
+        {scenario && (
+          <Card.Root maxW="750px" mx="auto" mb={8} borderLeftWidth={10} borderLeftColor={meta.brandColor || "#2577b1"}>
+            <Card.Body>
+              <Card.Title>
+                <Text fontSize="lg" fontWeight="bold" mb={2}>
+                  {scenario.useCase}のサンプル
+                </Text>
+              </Card.Title>
+              <Card.Description>
+                <Text mb={3}>想定読者: {scenario.audience}</Text>
+                <Text mb={4}>{scenario.readGuide}</Text>
+                <HStack>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={scenario.csvPath} download>
+                      <DownloadIcon size={16} />
+                      サンプルCSV
+                    </a>
+                  </Button>
+                </HStack>
+              </Card.Description>
+            </Card.Body>
+          </Card.Root>
+        )}
         <Overview result={result} />
         <ClientContainer result={result} />
         <Analysis result={result} />
