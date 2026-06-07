@@ -8,7 +8,7 @@ import { Overview } from "@/components/report/Overview";
 import { Reporter } from "@/components/reporter/Reporter";
 import type { Meta, Report, Result } from "@/type";
 import { ReportVisibility } from "@/type";
-import { Box, Button, Card, HStack, Separator, Text } from "@chakra-ui/react";
+import { Box, Button, Card, HStack, Separator, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import { DownloadIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -205,6 +205,7 @@ function ReportPage({
                     </a>
                   </Button>
                 </HStack>
+                {scenario.dataGuide && <SampleDataGuide scenario={scenario} result={result} />}
               </Card.Description>
             </Card.Body>
           </Card.Root>
@@ -220,5 +221,83 @@ function ReportPage({
       </Box>
       <Footer meta={meta} />
     </>
+  );
+}
+
+function SampleDataGuide({
+  scenario,
+  result,
+}: {
+  scenario: NonNullable<ReturnType<typeof getSampleScenario>>;
+  result: Result;
+}) {
+  if (!scenario.dataGuide) {
+    return null;
+  }
+
+  const sampleArguments = result.arguments.slice(0, 2);
+
+  return (
+    <Box mt={5} pt={5} borderTopWidth="1px" borderColor="gray.200">
+      <Text fontWeight="bold" mb={2}>
+        入力データに必要な情報
+      </Text>
+      <Text mb={4}>{scenario.dataGuide.summary}</Text>
+      <SimpleGrid columns={{ base: 1, md: 2 }} gap={4} mb={4}>
+        <ColumnGuide title="必須列" columns={scenario.dataGuide.requiredColumns} />
+        <ColumnGuide title="推奨する属性列" columns={scenario.dataGuide.recommendedColumns} />
+      </SimpleGrid>
+      <Box mb={4}>
+        <Text fontWeight="bold" mb={2}>
+          よいデータの条件
+        </Text>
+        <VStack alignItems="stretch" gap={1}>
+          {scenario.dataGuide.qualityNotes.map((note) => (
+            <Text key={note}>・{note}</Text>
+          ))}
+        </VStack>
+      </Box>
+      <Box>
+        <Text fontWeight="bold" mb={2}>
+          データ例
+        </Text>
+        <VStack alignItems="stretch" gap={3}>
+          {sampleArguments.map((argument) => (
+            <Box key={argument.arg_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+              <Text mb={2}>{argument.argument}</Text>
+              {argument.attributes && (
+                <HStack gap={2} flexWrap="wrap">
+                  {Object.entries(argument.attributes).map(([key, value]) => (
+                    <Text key={key} fontSize="xs" bg="gray.100" color="gray.700" px={2} py={1} borderRadius="sm">
+                      {key}: {value}
+                    </Text>
+                  ))}
+                </HStack>
+              )}
+            </Box>
+          ))}
+        </VStack>
+      </Box>
+    </Box>
+  );
+}
+
+function ColumnGuide({ title, columns }: { title: string; columns: [name: string, description: string][] }) {
+  return (
+    <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+      <Text fontWeight="bold" mb={2}>
+        {title}
+      </Text>
+      <VStack alignItems="stretch" gap={2}>
+        {columns.map(([name, description]) => (
+          <Box key={name}>
+            <Text as="span" fontFamily="mono" fontWeight="bold">
+              {name}
+            </Text>
+            <Text as="span">: {description}</Text>
+          </Box>
+        ))}
+      </VStack>
+    </Box>
   );
 }

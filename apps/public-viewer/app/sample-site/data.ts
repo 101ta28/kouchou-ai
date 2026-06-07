@@ -8,6 +8,12 @@ export type SampleScenario = {
   audience: string;
   csvPath: string;
   readGuide: string;
+  dataGuide?: {
+    summary: string;
+    requiredColumns: [name: string, description: string][];
+    recommendedColumns: [name: string, description: string][];
+    qualityNotes: string[];
+  };
 };
 
 type CatalogCluster = [
@@ -194,13 +200,16 @@ const createResult = (scenario: CatalogScenario): Result => {
 };
 
 export const sampleMeta: Meta = catalog.meta;
-export const sampleScenarios: SampleScenario[] = scenarios.map(({ slug, useCase, audience, csvPath, readGuide }) => ({
-  slug,
-  useCase,
-  audience,
-  csvPath,
-  readGuide,
-}));
+export const sampleScenarios: SampleScenario[] = scenarios.map(
+  ({ slug, useCase, audience, csvPath, readGuide, dataGuide }) => ({
+    slug,
+    useCase,
+    audience,
+    csvPath,
+    readGuide,
+    dataGuide,
+  }),
+);
 export const sampleResults: Record<string, Result> = Object.fromEntries(
   scenarios.map((scenario) => [scenario.slug, createResult(scenario)]),
 );
