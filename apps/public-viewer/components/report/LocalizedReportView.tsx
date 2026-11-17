@@ -5,6 +5,7 @@ import { BackButton } from "@/components/report/BackButton";
 import { ClientContainer } from "@/components/report/ClientContainer";
 import { LanguageToggle } from "@/components/report/LanguageToggle";
 import { Overview } from "@/components/report/Overview";
+import { PublicAudit } from "@/components/report/PublicAudit";
 import { ReadingGuide } from "@/components/report/ReadingGuide";
 import { useLanguage, useLocalizedResult } from "@/lib/i18n/LanguageContext";
 import { DEFAULT_LANGUAGE } from "@/lib/i18n/languages";
@@ -17,7 +18,11 @@ import type { ReactNode } from "react";
  * レポート本文。表示言語に応じて `translations` を適用した Result を
  * 下のコンポーネントへ渡す。翻訳が無い言語では元の言語のまま表示し、その旨を添える。
  */
-export function LocalizedReportView({ result, reporter }: { result: Result; reporter: ReactNode }) {
+export function LocalizedReportView({
+  result,
+  reporter,
+  slug,
+}: { result: Result; reporter: ReactNode; slug?: string }) {
   const { language, messages } = useLanguage();
   const localized = useLocalizedResult(result);
   const showUntranslatedNote = language !== DEFAULT_LANGUAGE && !hasReportTranslation(result, language);
@@ -36,6 +41,9 @@ export function LocalizedReportView({ result, reporter }: { result: Result; repo
       <ReadingGuide />
       <ClientContainer result={localized} />
       <Analysis result={localized} />
+      {slug && result.visibility !== "unlisted" && result.visibility !== "private" && (
+        <PublicAudit key={slug} slug={slug} />
+      )}
       <BackButton />
       <Separator my={12} maxW={"750px"} mx={"auto"} />
       <Box maxW={"750px"} mx={"auto"} mb={24}>

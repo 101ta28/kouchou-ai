@@ -168,5 +168,5 @@ export default async function Page({ params }: PageProps) {
   const meta: Meta = await metaResponse.json();
   const result: Result = await resultResponse.json();
 
-  return <ReportView result={result} meta={meta} reporter={<Reporter meta={meta} />} />;
+  return <ReportView slug={slug} result={result} meta={meta} reporter={<Reporter meta={meta} />} />;
 }

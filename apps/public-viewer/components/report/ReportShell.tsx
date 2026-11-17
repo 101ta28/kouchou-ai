@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 
 type ShellState =
   | { status: "loading" }
-  | { status: "ready"; meta: Meta; result: Result }
+  | { status: "ready"; meta: Meta; result: Result; slug: string }
   | { status: "notFound"; meta: Meta | null }
   | { status: "error"; url: string; message: string };
 
@@ -84,7 +84,7 @@ export function ReportShell() {
           return;
         }
 
-        setState({ status: "ready", meta, result });
+        setState({ status: "ready", meta, result, slug });
       } catch (e) {
         if (!active) return;
         // 失敗したファイルをそのまま出す（別のファイルを指すと調査を誤らせる）
@@ -129,5 +129,12 @@ export function ReportShell() {
     );
   }
 
-  return <ReportView result={state.result} meta={state.meta} reporter={<ShellReporter meta={state.meta} />} />;
+  return (
+    <ReportView
+      slug={state.slug}
+      result={state.result}
+      meta={state.meta}
+      reporter={<ShellReporter meta={state.meta} />}
+    />
+  );
 }

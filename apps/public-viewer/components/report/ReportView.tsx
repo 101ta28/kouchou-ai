@@ -19,15 +19,17 @@ export function ReportView({
   result,
   meta,
   reporter,
+  slug,
 }: {
   result: Result;
   meta: Meta;
   reporter: ReactNode;
+  slug?: string;
 }) {
   return (
     <LanguageProvider>
       <Header />
-      <LocalizedReportView result={result} reporter={reporter} />
+      <LocalizedReportView result={result} reporter={reporter} slug={slug} />
       <Footer meta={meta} />
     </LanguageProvider>
   );

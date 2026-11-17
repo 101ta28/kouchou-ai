@@ -20,6 +20,15 @@ afterEach(() => {
 });
 
 describe("next.config rewrites", () => {
+  it("isolates the offline tool CSP from report analytics and allows its local worker", async () => {
+    const config = loadConfig({ NEXT_PUBLIC_OUTPUT_MODE: undefined });
+    const headers = await config.headers?.();
+    const tools = headers?.find((row) => row.source === "/audit-tools/:path*");
+    const policy = tools?.headers.find((row) => row.key === "Content-Security-Policy")?.value;
+    expect(policy).toContain("connect-src 'none'");
+    expect(policy).toContain("worker-src blob:");
+    expect(policy).not.toContain("google");
+  });
   it("サーバーモードでは /meta/* を API に転送する（public/meta をコピーしないため）", async () => {
     const config = loadConfig({
       NEXT_PUBLIC_OUTPUT_MODE: undefined,

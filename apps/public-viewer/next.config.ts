@@ -63,6 +63,19 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/audit-tools/:path*",
+        headers: [
+          // Embedded CSP further restricts inline code to build-time hashes.
+          // This app needs a blob worker and no report/analytics connections.
+          {
+            key: "Content-Security-Policy",
+            value:
+              "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; worker-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
     ];
   },
 };
