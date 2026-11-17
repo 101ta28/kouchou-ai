@@ -5,6 +5,7 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
 import { ActionMenu } from "./ActionMenu/ActionMenu";
+import { AuditDialog } from "./AuditDialog/AuditDialog";
 import { ClusterEditDialog } from "./ClusterEditDialog/ClusterEditDialog";
 import { DeleteButton } from "./DeleteButton";
 import { NumberDisplay } from "./NumberDisplay";
@@ -26,6 +27,7 @@ function ReportDataAndActions({ report }: Props) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isClusterEditDialogOpen, setIsClusterEditDialogOpen] = useState(false);
   const [isVisualizationConfigDialogOpen, setIsVisualizationConfigDialogOpen] = useState(false);
+  const [isAuditDialogOpen, setIsAuditDialogOpen] = useState(false);
   return (
     <LayoutGroup>
       <AnimatePresence mode="wait">
@@ -38,7 +40,12 @@ function ReportDataAndActions({ report }: Props) {
             initial={{ opacity: 0 }}
             exit={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            style={{ display: "grid", gridTemplateColumns: "subgrid", gridColumn: "span 7", alignItems: "center" }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "subgrid",
+              gridColumn: "span 7",
+              alignItems: "center",
+            }}
           >
             <GridItem>
               <IconButton variant="ghost" size="lg" _hover={{ bg: "blue.50", boxShadow: "none" }} asChild>
@@ -69,10 +76,11 @@ function ReportDataAndActions({ report }: Props) {
                 setIsEditDialogOpen={setIsEditDialogOpen}
                 setIsClusterEditDialogOpen={setIsClusterEditDialogOpen}
                 setIsVisualizationConfigDialogOpen={setIsVisualizationConfigDialogOpen}
+                setIsAuditDialogOpen={setIsAuditDialogOpen}
               />
             </GridItem>
             <GridItem>
-              <Visibility report={report} />
+              <Visibility report={report} onPublish={() => setIsAuditDialogOpen(true)} />
             </GridItem>
             <ReportEditDialog
               isEditDialogOpen={isEditDialogOpen}
@@ -89,6 +97,7 @@ function ReportDataAndActions({ report }: Props) {
               isOpen={isVisualizationConfigDialogOpen}
               setIsVisualizationConfigDialogOpen={setIsVisualizationConfigDialogOpen}
             />
+            <AuditDialog report={report} open={isAuditDialogOpen} onOpenChange={setIsAuditDialogOpen} />
           </motion.div>
         )}
         {report.status === "processing" && (
@@ -100,7 +109,13 @@ function ReportDataAndActions({ report }: Props) {
             initial={{ opacity: 0 }}
             exit={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            style={{ display: "flex", alignItems: "center", height: "100%", gridColumn: "span 7", marginLeft: "4px" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              height: "100%",
+              gridColumn: "span 7",
+              marginLeft: "4px",
+            }}
           >
             <HStack color="font.processing">
               <Bot />
@@ -118,7 +133,13 @@ function ReportDataAndActions({ report }: Props) {
               initial={{ opacity: 0 }}
               exit={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              style={{ display: "flex", alignItems: "center", height: "100%", gridColumn: "span 6", marginLeft: "4px" }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                height: "100%",
+                gridColumn: "span 6",
+                marginLeft: "4px",
+              }}
             >
               <HStack color="font.error">
                 <Bot />

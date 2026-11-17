@@ -138,13 +138,27 @@ def download_public_audit(slug: str, run_id: str, release_id: str | None = Query
 @router.get("")
 def list_audit(slug: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
     validate_slug(slug)
-    records = restore_audit_index(slug).list_records()
+    try:
+        records = restore_audit_index(slug).list_records()
+        publications = {
+            state.source_run_id: state.model_dump(mode="json") for state in public_audit.list_publication_states(slug)
+        }
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc) from exc
+
+    def summary(row):
+        return {
+            **{key: row[key] for key in ("run_id", "kind", "status", "started_at", "finished_at", "parent_run_id")},
+            "publication": publications.get(row["run_id"]),
+        }
+
+    recommended = next((row for row in records if row["kind"] == "analysis" and row["status"] == "completed"), None)
+    if recommended is None:
+        recommended = next((row for row in records if row["status"] != "incomplete"), None)
     return {
         "total": len(records),
-        "records": [
-            {key: row[key] for key in ("run_id", "kind", "status", "started_at", "finished_at", "parent_run_id")}
-            for row in records[offset : offset + limit]
-        ],
+        "records": [summary(row) for row in records[offset : offset + limit]],
+        "recommended_record": summary(recommended) if recommended else None,
     }
 
 

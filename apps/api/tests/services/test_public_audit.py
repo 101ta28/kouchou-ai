@@ -101,6 +101,65 @@ def test_withdrawal_keeps_originals_and_blocks_public_access(publication):
     assert AuditStore(settings.REPORT_DIR / "report").verify(run_id)["valid"]
 
 
+@pytest.mark.asyncio
+async def test_admin_history_shows_publication_states_for_hidden_reports(publication, monkeypatch):
+    from src.routers import admin_report
+    from src.routers.audit import public_router, router
+
+    settings, run_id, report = publication
+    monkeypatch.setattr(admin_report, "settings", settings)
+    app = FastAPI()
+    app.include_router(router)
+    app.include_router(public_router)
+    base = "/admin/reports/report/audit"
+    headers = {"x-api-key": settings.ADMIN_API_KEY}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        assert (await client.get(base)).status_code == 401
+        assert (await client.get(base, headers={"x-api-key": "public-key"})).status_code == 401
+        initial = await client.get(base, headers=headers)
+        assert initial.headers["cache-control"] == "no-store"
+        assert initial.json()["records"][0]["publication"] is None
+        release = _publish(run_id)
+        report.visibility = ReportVisibility.UNLISTED
+        assert (await client.get("/reports/report/audit")).status_code == 404
+        listed = (await client.get(base, headers=headers)).json()
+        assert listed["records"][0]["publication"]["release_id"] == release["release_id"]
+        assert listed["records"][0]["publication"]["status"] == "published"
+        assert "private resident name" not in json.dumps(listed)
+        preview = (await client.get(f"{base}/{run_id}/public-preview", headers=headers)).json()
+        assert preview["publication"]["status"] == "published"
+        public_audit.withdraw_public_audit("report", run_id)
+        withdrawn = (await client.get(base, headers=headers)).json()
+        assert withdrawn["records"][0]["publication"]["status"] == "withdrawn"
+        assert public_audit.preview_public_audit("report", run_id)["publication"]["status"] == "withdrawn"
+
+
+def test_recommended_analysis_is_selected_from_all_pages(publication):
+    from src.routers.audit import list_audit
+
+    settings, run_id, _ = publication
+    with AuditSession(settings.REPORT_DIR / "report", "visibility_edit"):
+        pass
+    result = list_audit("report", limit=1, offset=0)
+    assert result["total"] == 2
+    assert result["records"][0]["kind"] == "visibility_edit"
+    assert result["recommended_record"]["run_id"] == run_id
+    assert result["recommended_record"]["publication"] is None
+
+
+def test_admin_publication_states_are_refreshed_from_azure(publication, monkeypatch):
+    settings, run_id, report = publication
+    settings.STORAGE_TYPE = "azure_blob"
+    storage = MemoryStorage()
+    monkeypatch.setattr(internal, "audit_storage", lambda: storage)
+    assert internal.sync_audit_to_storage("report")
+    _publish(run_id)
+    report.visibility = ReportVisibility.PRIVATE
+    assert public_audit.list_publication_states("report")[0].status == "published"
+    public_audit.withdraw_public_audit("report", run_id)
+    assert public_audit.list_publication_states("report")[0].status == "withdrawn"
+
+
 def test_tampered_public_document_is_not_served(publication):
     settings, run_id, _ = publication
     release = _publish(run_id)

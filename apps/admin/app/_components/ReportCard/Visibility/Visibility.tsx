@@ -12,6 +12,7 @@ import { updateReportVisibility } from "./actions";
 
 type Props = {
   report: Report;
+  onPublish: () => void;
 };
 
 const iconStyles = {
@@ -41,7 +42,7 @@ const iconStyles = {
   },
 };
 
-export function Visibility({ report }: Props) {
+export function Visibility({ report, onPublish }: Props) {
   const router = useRouter();
   const visibility = report.visibility || "private"; // fallback to 'private'
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -50,6 +51,10 @@ export function Visibility({ report }: Props) {
     <MenuRoot
       onOpenChange={(details) => setIsMenuOpen(details.open)}
       onSelect={async (e) => {
+        if (e.value === "public") {
+          onPublish();
+          return;
+        }
         if (e.value === report.visibility) return;
 
         const result = await updateReportVisibility(report.slug, e.value as ReportVisibility);

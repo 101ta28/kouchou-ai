@@ -5,7 +5,18 @@ import { MenuContent, MenuItem, MenuRoot, MenuTrigger, MenuTriggerItem } from "@
 import { toaster } from "@/components/ui/toaster";
 import type { Report } from "@/type";
 import { IconButton } from "@chakra-ui/react";
-import { Copy, Ellipsis, Eye, FileSpreadsheet, FileText, FolderDown, Pencil, TextIcon, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Ellipsis,
+  Eye,
+  FileSpreadsheet,
+  FileText,
+  FolderDown,
+  Pencil,
+  ShieldCheck,
+  TextIcon,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type Dispatch, type SetStateAction, useState } from "react";
 import { useBuildDownload } from "../../BuildDownloadButton/useBuildDownload";
@@ -19,6 +30,7 @@ type Props = {
   setIsEditDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsClusterEditDialogOpen: Dispatch<SetStateAction<boolean>>;
   setIsVisualizationConfigDialogOpen: Dispatch<SetStateAction<boolean>>;
+  setIsAuditDialogOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 export function ActionMenu({
@@ -26,6 +38,7 @@ export function ActionMenu({
   setIsEditDialogOpen,
   setIsClusterEditDialogOpen,
   setIsVisualizationConfigDialogOpen,
+  setIsAuditDialogOpen,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const { exportStaticHTML } = useBuildDownload();
@@ -48,6 +61,17 @@ export function ActionMenu({
           </IconButton>
         </MenuTrigger>
         <MenuContent>
+          {report.status === "ready" && (
+            <MenuItem
+              value="audit"
+              textStyle="body/md/bold"
+              onClick={() => setIsAuditDialogOpen(true)}
+              _icon={{ w: 5, h: 5 }}
+            >
+              <ShieldCheck />
+              監査資料の確認・公開
+            </MenuItem>
+          )}
           <MenuItem
             value="edit"
             textStyle="body/md/bold"

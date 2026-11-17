@@ -193,7 +193,13 @@ def _state(slug: str, run_id: str) -> PublicationState | None:
 def preview_public_audit(slug: str, run_id: str) -> dict:
     store = internal.restore_audit_files(slug, run_id)
     document = build_public_audit(store, run_id)
-    return {"document": document, "sha256": document_digest(document), "review_required": True}
+    state = _state(slug, run_id)
+    return {
+        "document": document,
+        "sha256": document_digest(document),
+        "review_required": True,
+        "publication": state.model_dump(mode="json") if state else None,
+    }
 
 
 @contextmanager
@@ -372,8 +378,8 @@ def download_public_audit(slug: str, run_id: str, expected_release: str | None =
     return data, release
 
 
-def list_public_audits(slug: str) -> list[dict]:
-    require_public_report(slug)
+def list_publication_states(slug: str) -> list[PublicationState]:
+    """Read approval states for administrators, including hidden and withdrawn releases."""
     store = internal.store_for(slug)
     if internal.settings.STORAGE_TYPE == "azure_blob":
         with tempfile.TemporaryDirectory(prefix="kouchou-audit-index-") as temporary:
@@ -387,9 +393,13 @@ def list_public_audits(slug: str) -> list[dict]:
             states = [_read_json(path) for path in Path(temporary).glob("*/state.json")]
     else:
         states = [_read_json(path) for path in (store.path / "publications").glob("*/state.json")]
+    return [PublicationState.model_validate(data) for data in states]
+
+
+def list_public_audits(slug: str) -> list[dict]:
+    require_public_report(slug)
     result = []
-    for data in states:
-        state = PublicationState.model_validate(data)
+    for state in list_publication_states(slug):
         if state.status == "published" and state.release_id:
             # Only approved run IDs appear; no parent IDs or private history counts.
             result.append(
