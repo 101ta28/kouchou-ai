@@ -137,6 +137,29 @@ def _write_outputs(
 
 
 def run(args: argparse.Namespace, request: RequestFn | None = None) -> int:
+    from analysis_core.audit import AuditSession
+    from analysis_core.steps.hierarchical_translation import TRANSLATION_PROMPT
+
+    if args.dry_run or not args.result.exists():
+        return _run(args, request)
+    with AuditSession(args.result.parent, "translation") as audit:
+        config = _read_result(args.result).get("config") or {}
+        audit.config = {
+            "provider": args.provider or config.get("provider") or "openai",
+            "model": args.model or config.get("model"),
+            "prompt": TRANSLATION_PROMPT,
+            "options": vars(args),
+        }
+        audit.write_data("config.json", audit.config)
+        audit.snapshot(args.result, "before/source_result.json", hashed=True)
+        result = _run(args, request)
+        audit.success = result == 0
+        if result == 0:
+            audit.snapshot(args.output or args.result, "after/translated_result.json", hashed=True)
+        return result
+
+
+def _run(args: argparse.Namespace, request: RequestFn | None = None) -> int:
     """CLI 本体。request を渡すと LLM 呼び出しを差し替えられる（テスト用）。"""
     if not args.result.exists():
         print(f"Error: Result file not found: {args.result}", file=sys.stderr)

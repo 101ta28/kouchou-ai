@@ -208,6 +208,15 @@ def test_cli_writes_output_without_touching_input(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "clusters=3" in out
     assert "Wrote translations for en, ko" in out
+    from analysis_core.audit import AuditStore
+
+    store = AuditStore(source.parent)
+    record = store.list_records()[0]
+    assert record["kind"] == "translation" and record["status"] == "completed"
+    assert store.file(record["run_id"], "before/source_result.json").read_text() == before
+    assert json.loads(store.file(record["run_id"], "after/translated_result.json").read_text()) == written
+    assert json.loads(store.file(record["run_id"], "config.json").read_text())["model"] == "m"
+    assert store.verify(record["run_id"])["valid"]
 
 
 def test_cli_dry_run_and_errors(tmp_path, capsys):

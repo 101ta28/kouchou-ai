@@ -134,6 +134,7 @@ class PipelineOrchestrator:
         self.input_base_dir = input_base_dir or Path(config.get("_input_base_dir", "inputs"))
         self.steps = steps or self.DEFAULT_STEPS
         self._step_functions: dict[str, Callable] = {}
+        self._refresh_plan_on_run = False
 
     @classmethod
     def from_config(
@@ -155,7 +156,6 @@ class PipelineOrchestrator:
         This method handles initialization including:
         - Loading and validating config
         - Setting up step defaults
-        - Creating output directories
         - Checking previous run status
 
         Args:
@@ -165,7 +165,8 @@ class PipelineOrchestrator:
             skip_interaction: Skip interactive prompts
             without_html: Skip HTML visualization
             validate_api_keys_early: Validate provider credentials during initialization
-            persist_status: Persist running/completed status to hierarchical_status.json
+            persist_status: Retained for compatibility. Files and status are now
+                written only when execution begins, after acquiring the audit lock.
             output_base_dir: Base directory for outputs
             input_base_dir: Base directory for inputs
             reuse_from: Reuse intermediate outputs from another job directory
@@ -182,18 +183,22 @@ class PipelineOrchestrator:
             skip_interaction=skip_interaction,
             without_html=without_html,
             validate_api_keys_early=validate_api_keys_early,
-            persist_status=persist_status,
+            # Archive the previous state and acquire the report lock before any
+            # copies or status updates. Planning itself is read-only.
+            persist_status=False,
             output_base_dir=output_base_dir,
             input_base_dir=input_base_dir,
             steps_module=steps_module,
             reuse_from=reuse_from,
         )
 
-        return cls(
+        orchestrator = cls(
             config=config,
             output_base_dir=output_base_dir,
             input_base_dir=input_base_dir,
         )
+        orchestrator._refresh_plan_on_run = True
+        return orchestrator
 
     def register_step(self, name: str, func: Callable[[dict[str, Any]], None]) -> None:
         """
@@ -206,6 +211,9 @@ class PipelineOrchestrator:
         self._step_functions[name] = func
 
     def run(self) -> PipelineResult:
+        return self._run_with_audit(self._run_legacy)
+
+    def _run_legacy(self) -> PipelineResult:
         """
         Execute the legacy direct-step pipeline.
 
@@ -218,12 +226,17 @@ class PipelineOrchestrator:
             stacklevel=2,
         )
         start_time = datetime.now()
+        from analysis_core.audit import current_session
+
+        audit = current_session()
         step_results: list[StepResult] = []
         error: Exception | None = None
 
         try:
             # Execute each step
             for step_name in self.steps:
+                if audit:
+                    audit.step(step_name, status="started", params=self.config.get(step_name, {}))
                 step_func = self._step_functions.get(step_name)
                 if step_func is None and step_name in DEFAULT_STEP_MODULES:
                     step_func = load_default_step_function(step_name)
@@ -239,6 +252,9 @@ class PipelineOrchestrator:
                         config=self.config,
                         output_base_dir=self.output_base_dir,
                     )
+                    if audit:
+                        planned = next((p for p in self.config.get("plan", []) if p["step"] == step_name), {})
+                        audit.step(step_name, status="completed" if planned.get("run", True) else "skipped")
                     step_duration = (datetime.now() - step_start).total_seconds()
                     step_results.append(
                         StepResult(
@@ -249,6 +265,8 @@ class PipelineOrchestrator:
                         )
                     )
                 except Exception as e:
+                    if audit:
+                        audit.step(step_name, status="failed", error=type(e).__name__)
                     step_duration = (datetime.now() - step_start).total_seconds()
                     step_results.append(
                         StepResult(
@@ -392,13 +410,83 @@ class PipelineOrchestrator:
             if plan_runs_step(normalized["plan"], "embedding"):
                 validate_embedding_keys(provider, bool(normalized.get("is_embedded_at_local", False)), user_api_key)
 
-        return cls(
+        orchestrator = cls(
             config=normalized,
             output_base_dir=output_base,
             input_base_dir=input_base,
         )
+        orchestrator._refresh_plan_on_run = "plan" not in config
+        return orchestrator
 
     def run_workflow(self) -> "PipelineResult":
+        return self._run_with_audit(self._run_workflow)
+
+    def _prepare_audited_execution(self) -> None:
+        """Refresh reuse decisions under the same lock as analysis and edits."""
+        from analysis_core.core.orchestration import (
+            _seed_reused_outputs,
+            decide_what_to_run,
+            get_specs_path_for_mode,
+            load_specs,
+        )
+
+        report_dir = self.output_base_dir / self.config["output_dir"]
+        report_dir.mkdir(parents=True, exist_ok=True)
+        specs = load_specs(get_specs_path_for_mode(self.config.get("analysis_mode", "hierarchical")))
+        _seed_reused_outputs(config=self.config, output_base_dir=self.output_base_dir, specs=specs)
+        status_file = report_dir / "hierarchical_status.json"
+        previous = json.loads(status_file.read_text(encoding="utf-8")) if status_file.exists() else None
+        if previous:
+            self.config["previous"] = previous
+        else:
+            self.config.pop("previous", None)
+        self.config["plan"] = decide_what_to_run(self.config, previous, specs, self.output_base_dir)
+
+    def _run_with_audit(self, execute: Callable[[], PipelineResult]) -> PipelineResult:
+        from analysis_core.audit import AuditBusyError, AuditSession
+
+        report_dir = self.output_base_dir / self.config.get("output_dir", "analysis")
+        input_name = self.config.get("input")
+        input_path = self.input_base_dir / f"{input_name}.csv" if input_name else None
+        if input_name and str(input_name).endswith(".csv"):
+            input_path = self.input_base_dir / str(input_name)
+        original_input_dir = self.input_base_dir
+        original_input_base = self.config.get("_input_base_dir")
+        original_input_name = input_name
+        try:
+            with AuditSession(report_dir, "analysis", self.config, input_path) as audit:
+                if self._refresh_plan_on_run:
+                    self._prepare_audited_execution()
+                    audit.write_data("config.json", self.config)
+                    if self.config.get("reuse_from"):
+                        audit.capture_outputs("reused")
+                # Read the archived copy, so changing the uploaded CSV during a run
+                # cannot silently change the evidence associated with the result.
+                if input_path is not None and (audit.directory / "inputs" / input_path.name).is_file():
+                    self.input_base_dir = audit.directory / "inputs"
+                    self.config["_input_base_dir"] = str(self.input_base_dir)
+                    self.config["input"] = input_path.stem
+                self.config["_audit_run_id"] = audit.run_id
+                result = execute()
+                audit.success = result.success
+                audit.error = result.error
+                return result
+        except AuditBusyError:
+            # Do not replace the status of the operation that owns the lock.
+            raise
+        except Exception as exc:
+            update_status(self.config, {"status": "error", "error": str(exc)}, self.output_base_dir)
+            raise
+        finally:
+            self.input_base_dir = original_input_dir
+            self.config["input"] = original_input_name
+            if original_input_base is None:
+                self.config.pop("_input_base_dir", None)
+            else:
+                self.config["_input_base_dir"] = original_input_base
+            self.config.pop("_audit_run_id", None)
+
+    def _run_workflow(self) -> "PipelineResult":
         """
         Execute the pipeline using the workflow engine.
 
@@ -444,6 +532,10 @@ class PipelineOrchestrator:
         step_durations: dict[str, float] = {}
 
         def mark_step_started(step_name: str) -> None:
+            from analysis_core.audit import current_session
+
+            if audit := current_session():
+                audit.step(step_name, status="started")
             step_started_at[step_name] = datetime.now()
             update_status(
                 self.config,
@@ -455,6 +547,35 @@ class PipelineOrchestrator:
             )
 
         def mark_step_completed(step_name: str, result: WorkflowStepResult) -> None:
+            from analysis_core.audit import current_session
+
+            if audit := current_session():
+                archived_artifacts = {}
+                if result.outputs:
+                    for artifact, path in result.outputs.artifacts.items():
+                        if Path(path).is_file():
+                            relative = f"steps/artifacts/{step_name}/{artifact}/{Path(path).name}"
+                            audit.snapshot(Path(path), relative)
+                            archived_artifacts[artifact] = relative
+                audit.step(
+                    step_name,
+                    status="skipped" if result.skipped else "completed" if result.success else "failed",
+                    success=result.success,
+                    error=result.error,
+                    params=self.config.get(workflow_step_to_legacy_name(step_name), {}),
+                    token_usage=result.outputs.token_usage if result.outputs else 0,
+                    artifacts=archived_artifacts,
+                    reused_job=next(
+                        (
+                            job
+                            for job in collect_previous_jobs(self.config.get("previous"))
+                            if job["step"] == workflow_step_to_legacy_name(step_name)
+                        ),
+                        None,
+                    )
+                    if result.skipped
+                    else None,
+                )
             legacy_step_name = workflow_step_to_legacy_name(step_name)
             started = step_started_at.get(step_name)
             duration = (datetime.now() - started).total_seconds() if started else 0.0
@@ -470,6 +591,8 @@ class PipelineOrchestrator:
                 completed_jobs.append(
                     {
                         "step": legacy_step_name,
+                        "audit_run_id": self.config.get("_audit_run_id"),
+                        "audit_report": self.config.get("output_dir"),
                         "completed": datetime.now().isoformat(),
                         "duration": duration,
                         "params": self.config.get(legacy_step_name, {}),

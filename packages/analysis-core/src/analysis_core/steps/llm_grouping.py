@@ -6,6 +6,7 @@ import json
 import os
 from collections import Counter
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
+from contextvars import copy_context
 from dataclasses import dataclass
 
 import numpy as np
@@ -336,7 +337,10 @@ def _assign_groups(
         return {}
 
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(batches)))) as executor:
-        futures = [executor.submit(assign_batch, batch_ids, batch_arguments) for batch_ids, batch_arguments in batches]
+        futures = [
+            executor.submit(copy_context().run, assign_batch, batch_ids, batch_arguments)
+            for batch_ids, batch_arguments in batches
+        ]
         try:
             # 完了順に失敗を見る。バッチ順に result() を待つと、先頭のバッチが遅い間に
             # 後ろのバッチの失敗に気づけず、残りのバッチを送り続けてしまう。

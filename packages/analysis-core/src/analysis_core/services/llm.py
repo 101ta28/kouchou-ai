@@ -12,6 +12,7 @@ import openai
 from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel, ValidationError
 
+from analysis_core.audit import record_model_response
 from analysis_core.env_file import load_env_file
 from analysis_core.services.error_summary import redact_secrets
 from analysis_core.services.rate_limit import call_with_rate_limit, chat_http_client
@@ -70,6 +71,7 @@ def _enum_name(value: Any) -> str | None:
 
 def _raise_if_openai_response_blocked(response: Any, provider_label: str) -> None:
     """OpenAI 互換の応答で、拒否・コンテンツフィルタによって本文が無い場合に専用の例外にする。"""
+    record_model_response(provider_label, response)
     choices = getattr(response, "choices", None)
     if not isinstance(choices, list) or not choices:
         return
@@ -108,6 +110,7 @@ def _raise_if_prompt_blocked(error: openai.BadRequestError, provider_label: str)
 
 def _raise_if_gemini_response_blocked(response: Any) -> None:
     """Gemini で入力・応答が安全ブロックなどで止められ、本文が無い場合に専用の例外にする。"""
+    record_model_response("gemini", response)
     feedback = getattr(response, "prompt_feedback", None)
     block_reason = getattr(feedback, "block_reason", None) if feedback is not None else None
     if _enum_name(block_reason) in _GEMINI_PROMPT_BLOCK_REASONS:
@@ -968,6 +971,7 @@ def request_to_local_llm_embed(args, model, address="localhost:11434"):
         )
 
         response = client.embeddings.create(input=args, model=model)
+        record_model_response("local_embedding", response, model)
         embeds = [item.embedding for item in response.data]
         return embeds
     except Exception as e:
@@ -1007,6 +1011,7 @@ def request_to_embed(
         _validate_model(model)
         client = OpenAI(api_key=user_api_key) if user_api_key else OpenAI()
         response = client.embeddings.create(input=args, model=model)
+        record_model_response("openai_embedding", response, model)
         embeds = [item.embedding for item in response.data]
         return embeds
     elif provider == "gemini":
@@ -1102,6 +1107,7 @@ def request_to_gemini_embed(args, model, user_api_key: str | None = None):
     for start in range(0, len(args), GEMINI_EMBED_BATCH_SIZE):
         chunk = args[start : start + GEMINI_EMBED_BATCH_SIZE]
         response = _gemini_embed_with_retry(client, model, chunk)
+        record_model_response("gemini_embedding", response, model)
         values_list = _extract_gemini_embedding_values_list(response)
         if values_list is None or len(values_list) != len(chunk):
             # ここでキー一覧などをログに残すと調査が楽
@@ -1188,6 +1194,7 @@ def request_to_azure_embed(args, model, user_api_key: str | None = None):
     )
 
     response = client.embeddings.create(input=args, model=deployment)
+    record_model_response("azure_embedding", response, deployment)
     return [item.embedding for item in response.data]
 
 
@@ -1214,6 +1221,7 @@ def request_to_local_embed(args):
             __local_emb_model = SentenceTransformer(model_name)
 
     result = __local_emb_model.encode(args)
+    record_model_response("sentence_transformers", {}, "sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
     return result.tolist()
 
 

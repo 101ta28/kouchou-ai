@@ -87,6 +87,8 @@ package-lock.json
 yarn.lock
 
 # API specific exclusions (data files)
+**/audits/
+**/*.audits/
 apps/api/broadlistening/pipeline/inputs/*
 apps/api/broadlistening/pipeline/configs/*
 apps/api/broadlistening/pipeline/outputs/*

@@ -29,6 +29,7 @@ import json
 import re
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import datetime, timezone
 from typing import Any
 
@@ -251,7 +252,8 @@ def translate_items(
     def run_all(batches: list[list[dict[str, Any]]]) -> dict[str, str]:
         pending: dict[str, str] = {}
         with ThreadPoolExecutor(max_workers=max(1, workers)) as executor:
-            for ok, failed in executor.map(run_batch, batches):
+            contexts = [(copy_context(), batch) for batch in batches]
+            for ok, failed in executor.map(lambda pair: pair[0].run(run_batch, pair[1]), contexts):
                 translated.update(ok)
                 pending.update(failed)
         return pending

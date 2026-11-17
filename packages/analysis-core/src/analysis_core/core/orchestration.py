@@ -224,7 +224,7 @@ def _seed_reused_outputs(
             "step": step_name,
             "params": source_job.get("params", {}),
         }
-        for key in ("completed", "global_params"):
+        for key in ("completed", "global_params", "audit_run_id", "audit_report"):
             if key in source_job:
                 seeded_job[key] = source_job[key]
         seeded_jobs.append(seeded_job)
@@ -286,8 +286,7 @@ def validate_api_keys(provider: str, user_api_key: str | None = None) -> None:
         api_key = user_api_key or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "OPENAI_API_KEY environment variable is not set. "
-                "Please set it in your .env file or environment."
+                "OPENAI_API_KEY environment variable is not set. Please set it in your .env file or environment."
             )
         # 書式誤りをリクエストのたびに検出すると、抽出などの失敗に埋もれて原因が見えない。
         # LLM_REQUEST_TIMEOUT_SECONDS と同じく起動時に変数名つきで止める。
@@ -315,16 +314,14 @@ def validate_api_keys(provider: str, user_api_key: str | None = None) -> None:
         api_key = user_api_key or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "GEMINI_API_KEY environment variable is not set. "
-                "Please set it in your .env file or environment."
+                "GEMINI_API_KEY environment variable is not set. Please set it in your .env file or environment."
             )
 
     elif provider == "openrouter":
         api_key = user_api_key or os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "OPENROUTER_API_KEY environment variable is not set. "
-                "Please set it in your .env file or environment."
+                "OPENROUTER_API_KEY environment variable is not set. Please set it in your .env file or environment."
             )
 
     elif provider == "local":
@@ -905,6 +902,8 @@ def run_step(
             + [
                 {
                     "step": step,
+                    "audit_run_id": config.get("_audit_run_id"),
+                    "audit_report": config.get("output_dir"),
                     "completed": datetime.now().isoformat(),
                     "duration": (
                         datetime.now() - datetime.fromisoformat(config["current_job_started"])

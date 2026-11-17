@@ -45,3 +45,7 @@ docs/repo-readmes/
 
 # Extraction diagnostics contain original comments and are never public artifacts.
 diagnostics/
+
+# Private audit snapshots contain original comments and are not source files.
+audits/
+*.audits/

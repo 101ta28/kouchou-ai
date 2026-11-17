@@ -149,6 +149,18 @@ class WorkflowEngine:
             # Get step-specific config
             step_config = self._resolve_step_config(step.config, config)
 
+            from analysis_core.audit import current_session
+
+            if audit := current_session():
+                audit.step(
+                    step_id,
+                    status="resolved",
+                    plugin_id=plugin.metadata.id,
+                    plugin_version=plugin.metadata.version,
+                    params=step_config,
+                    inputs={key: str(path) for key, path in step_artifacts.items()},
+                )
+
             # Validate inputs and config before execution
             input_errors = plugin.validate_inputs(inputs)
             config_errors = plugin.validate_config(step_config)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from collections.abc import Callable, Iterator, Sequence
+from contextvars import copy_context
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -34,7 +35,7 @@ def iter_pool_completed(
         def fill() -> None:
             nonlocal next_index
             while next_index < len(items) and len(in_flight) < workers and not stop():
-                in_flight[executor.submit(fn, items[next_index])] = next_index
+                in_flight[executor.submit(copy_context().run, fn, items[next_index])] = next_index
                 next_index += 1
 
         fill()

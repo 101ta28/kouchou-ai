@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from threading import Lock
 
 import openai
@@ -111,7 +112,7 @@ def run_labelling_batch(process, cluster_ids, workers, stage, secrets: Iterable[
     failures = {}
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [
-            (cluster_id, executor.submit(_process_with_retry, process, cluster_id, stage, config))
+            (cluster_id, executor.submit(copy_context().run, _process_with_retry, process, cluster_id, stage, config))
             for cluster_id in cluster_ids
         ]
         for cluster_id, future in futures:

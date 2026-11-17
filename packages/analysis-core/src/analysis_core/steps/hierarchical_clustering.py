@@ -4,6 +4,7 @@ import json
 import os
 import pickle
 from importlib import import_module
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -363,6 +364,10 @@ def hierarchical_clustering(config):
     # 新しい embeddings を同一平面へ投影 (transform) する。無ければ従来通り fit_transform。
     reuse_value = config["hierarchical_clustering"].get("reuse_umap_model")
     reuse_model_path = _resolve_reuse_model_path(reuse_value, output_base_dir, dataset)
+    from analysis_core.audit import current_session
+
+    if (audit := current_session()) and reuse_model_path is not None:
+        reuse_model_path = str(audit.archive_input(Path(reuse_model_path), "reused_umap_model.pkl"))
 
     # fit は少数件だと UMAP 内部のエラーで落ちるので、先に分かる文言で止める。
     # transform（reuse_umap_model）は少数件でも投影できるので対象外。
@@ -386,6 +391,20 @@ def hierarchical_clustering(config):
         n_neighbors = max(2, n_samples - 1)  # 最低2以上
     else:
         n_neighbors = default_n_neighbors
+
+    if audit:
+        audit.step(
+            "clustering",
+            status="effective_config",
+            params={
+                "cluster_nums": cluster_nums,
+                "n_neighbors": n_neighbors,
+                "n_components": UMAP_N_COMPONENTS,
+                "reuse_umap_model": reuse_model_path,
+                "random_state": None,
+                "save_umap_model": should_save_umap_model,
+            },
+        )
 
     def _umap_factory(**kwargs):
         return UMAP(**kwargs)
