@@ -5,7 +5,8 @@ export function checkEnvOverrides() {
   const envPath = resolve(process.cwd(), ".env");
 
   if (!existsSync(envPath)) {
-    console.warn("[env-check] .env file not found");
+    // Docker injects environment variables without copying .env into the image.
+    // There are no file values to compare in this case.
     return;
   }
 

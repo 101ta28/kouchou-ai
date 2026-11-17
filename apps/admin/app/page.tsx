@@ -4,6 +4,9 @@ import { Box, Code, Heading, Text, VStack } from "@chakra-ui/react";
 import { PageContent } from "./_components/PageContent";
 import { getApiBaseUrl } from "./utils/api";
 
+// 管理用の一覧はリクエストごとに取得し、ビルド時の静的生成は行わない。
+export const dynamic = "force-dynamic";
+
 type ErrorInfo = {
   title: string;
   description: string;
