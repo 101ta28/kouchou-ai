@@ -6,26 +6,113 @@
   <meta name="referrer" content="no-referrer">
   <title>監査資料を手元で確認する · 広聴AI</title>
   <style>
-    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #25342f; background: #f7f9f8; }
-    body { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; line-height: 1.85; }
-    h1 { font-size: clamp(1.6rem, 5vw, 2.1rem); line-height: 1.5; } h2 { margin-top: 2rem; font-size: 1.25rem; }
-    a { color: #176347; text-underline-offset: .2em; } a:focus-visible { outline: 3px solid #176347; outline-offset: 4px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
-    .actions a { padding: 10px 16px; background: white; border: 1px solid #176347; border-radius: 6px; }
-    pre { background: #eaf0ed; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; }
-    code { overflow-wrap: anywhere; } li { margin-bottom: .5rem; } footer { border-top: 1px solid #ccd7d1; margin-top: 40px; padding-top: 16px; font-size: .85rem; }
+    /* Match public-viewer/components/theme and the public FAQ layout.
+       Keep this standalone page free of external font, image and script requests. */
+    :root {
+      color-scheme: light;
+      font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      color: #27272a;
+      background: #fff;
+      font-size: 16px;
+      line-height: 2;
+      letter-spacing: .4px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; -webkit-font-smoothing: antialiased; }
+    a { color: #2563eb; text-underline-offset: 3px; }
+    a:hover { text-decoration: none; }
+    a:focus-visible { outline: 3px solid #27272a; outline-offset: 4px; }
+    .skip-link { position: absolute; top: 8px; left: 24px; z-index: 1; padding: 8px 16px; background: #fff; transform: translateY(-200%); }
+    .skip-link:focus { transform: translateY(0); }
+    .site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 24px; border-bottom: 1px solid rgba(0, 0, 0, .16); }
+    .brand { display: inline-flex; align-items: center; flex-shrink: 0; }
+    .brand svg { display: block; max-width: 100%; }
+    .brand-mobile { display: none; }
+    .site-nav { display: flex; gap: 4px; }
+    .site-nav a { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; color: inherit; font-size: 12px; letter-spacing: .3px; text-decoration: none; }
+    .site-nav a:hover { color: #3b82f6; }
+    .icon { width: 24px; height: 24px; flex-shrink: 0; }
+    main { padding: 32px 24px 96px; background: #eff6ff; }
+    .content { max-width: 1024px; margin: 0 auto; }
+    h1, h2 { margin: 0; font-weight: 700; line-height: 1.625; overflow-wrap: anywhere; }
+    h1 { font-size: 30px; letter-spacing: .75px; }
+    h2 { margin-bottom: 24px; font-size: 24px; letter-spacing: .6px; }
+    p { margin: 0 0 16px; }
+    .intro { margin-top: 24px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 16px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; padding: 7px 32px; border: 1px solid #27272a; border-radius: 9999px; background: #27272a; color: #fff; font-weight: 700; text-align: center; text-decoration: none; }
+    .button .icon { width: 20px; height: 20px; }
+    .button:hover { background: #52525b; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1); }
+    .button:active { background: #18181b; }
+    .button-secondary { background: #fff; color: #27272a; }
+    .button-secondary:hover { background: rgba(0, 0, 0, .06); }
+    .button-secondary:active { background: rgba(0, 0, 0, .08); }
+    .version { color: #71717a; font-size: 12px; letter-spacing: .3px; }
+    .version a { display: inline-block; }
+    .guide-section { margin-top: 32px; padding: 32px; border-radius: 4px; background: #fff; }
+    .guide-section > :last-child { margin-bottom: 0; }
+    ol { margin: 0 0 24px; padding-left: 1.75em; }
+    li { padding-left: .25em; margin-bottom: 16px; }
+    li::marker { font-weight: 700; }
+    pre { margin: 24px 0; padding: 24px; border: 1px solid rgba(0, 0, 0, .16); border-radius: 4px; background: #fafafa; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+    code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: .875em; overflow-wrap: anywhere; }
+    footer { padding: 32px 24px; font-size: 12px; letter-spacing: .3px; color: #71717a; }
+    footer p:last-child { margin-bottom: 0; }
+    @media (max-width: 767px) {
+      .site-header { flex-wrap: wrap; gap: 8px; padding-top: 16px; }
+      .brand-desktop { display: none; }
+      .brand-mobile { display: block; }
+      .site-nav { width: 100%; justify-content: flex-end; }
+      .site-nav a { flex-direction: row; gap: 8px; padding: 12px 8px; }
+      main { padding-bottom: 64px; }
+      h1 { font-size: 24px; letter-spacing: .6px; }
+      h2 { font-size: 20px; letter-spacing: .5px; }
+      .actions { flex-direction: column; align-items: stretch; }
+      .button { padding: 10px 20px; }
+      .guide-section { padding: 24px; }
+      pre { padding: 16px; }
+    }
+    @media print {
+      .site-header, .skip-link, .actions { display: none; }
+      main { padding: 0; background: #fff; }
+      .guide-section { padding: 0; }
+      footer { padding: 24px 0 0; }
+      h2 { break-after: avoid; }
+    }
   </style>
 </head>
 <body>
-  <p>広聴AI · 公開監査資料</p>
+  <a class="skip-link" href="#main">本文へ移動</a>
+  <header class="site-header">
+    <a class="brand" href="../" aria-label="広聴AI レポート一覧">
+      <span class="brand-desktop" aria-hidden="true">__LOGO_DESKTOP__</span>
+      <span class="brand-mobile" aria-hidden="true">__LOGO_MOBILE__</span>
+    </a>
+    <nav class="site-nav" aria-label="メインナビゲーション">
+      <a href="../">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v14"/><path d="M18 6H10a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10Z"/><path d="M18 6v4h4"/></svg>
+        レポート一覧
+      </a>
+      <a href="../faq/">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+        よくあるご質問
+      </a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+  <div class="content">
   <h1>監査資料を手元で確認する</h1>
-  <p>レポートから取得したZIPの内容とファイルの整合性を確認できます。ブラウザとCLIのどちらも端末内で処理し、資料をサーバーへ送信しません。広聴AIへのログインは不要です。</p>
+  <p class="intro">レポートから取得したZIPの内容とファイルの整合性を確認できます。ブラウザとCLIのどちらも端末内で処理し、資料をサーバーへ送信しません。広聴AIへのログインは不要です。</p>
   <div class="actions">
-    <a href="./__ARTIFACT__/audit-viewer.zip" download>検証ツールをダウンロード（ZIP）</a>
-    <a href="./__ARTIFACT__/index.html">ブラウザで検証ツールを開く</a>
+    <a class="button" href="./__ARTIFACT__/audit-viewer.zip" download>
+      <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      <span>検証ツールをダウンロード（ZIP）</span>
+    </a>
+    <a class="button button-secondary" href="./__ARTIFACT__/index.html">ブラウザで検証ツールを開く</a>
   </div>
-  <p>ツールの版: __VERSION__ · <a href="./__ARTIFACT__/SHA256SUMS" download>ツールのSHA-256を保存</a></p>
-  <h2>ブラウザで確認する</h2>
+  <p class="version">ツールの版: __VERSION__ · <a href="./__ARTIFACT__/SHA256SUMS" download>ツールのSHA-256を保存</a></p>
+  <section class="guide-section" aria-labelledby="browser-heading">
+  <h2 id="browser-heading">ブラウザで確認する</h2>
   <ol>
     <li>レポートの「公開監査資料」から資料のZIPを保存します。</li>
     <li>上の検証ツールをダウンロードして展開し、<code>index.html</code> をブラウザで開きます。一度取得すればネット接続は不要です。オンラインで開いた場合も、選んだ資料をアップロードしません。</li>
@@ -33,14 +120,26 @@
     <li>内容と検査結果を確認し、必要に応じて「検査結果を保存」または「印刷・PDF保存」を使います。</li>
   </ol>
   <p>動作確認対象はChromium系ブラウザです。資料ZIPは再圧縮せず、そのまま読み込んでください。</p>
-  <h2>CLIで確認する</h2>
+  </section>
+  <section class="guide-section" aria-labelledby="cli-heading">
+  <h2 id="cli-heading">CLIで確認する</h2>
   <p>Node.js 22.17以降を用意し、検証ツールの展開先で次のコマンドを実行します。Pythonや追加のnpmパッケージは不要です。<code>public-audit.zip</code> は取得した資料のパスに置き換えてください。</p>
-  <pre>node packages/audit-verifier/bin/audit-release.mjs verify public-audit.zip --output verification.json</pre>
+  <pre><code>node packages/audit-verifier/bin/audit-release.mjs verify public-audit.zip --output verification.json</code></pre>
   <p>別経路で取得したZIPのSHA-256を照合する場合は <code>--expected-sha256 値</code>、署名を確認する場合は <code>--public-key 確認済み公開鍵.pem</code> を追加します。終了コード0は指定した検査に不一致がなかったことを示します。署名なし・未検査の項目はJSONで個別に確認してください。</p>
-  <h2>確認できる範囲</h2>
+  </section>
+  <section class="guide-section" aria-labelledby="scope-heading">
+  <h2 id="scope-heading">確認できる範囲</h2>
   <p>公開資料には、公開可能な分析条件・処理記録が含まれます。元コメントは含まれず、原文に忠実な抽出か、分類が公平かを自動判定するものではありません。資料の日時は記載値であり、現在のレポートとの一致や、すべての実行記録が公開されていることを保証しません。</p>
   <p>ハッシュ一致は資料内の整合性の確認です。発行者の確認には、別の信頼できる経路で確認した公開鍵と署名が必要です。オフラインでは公開取り消し、最新版、鍵の失効状況は確認できません。引用・利用時には発行元のお知らせも確認してください。</p>
   <p>資料のZIPと検査結果を一緒に保存してください。公開資料の識別子とZIP全体のSHA-256は別の値です。署名の追加などでZIPが変われば、ZIPのSHA-256も変わります。</p>
-  <footer>検証ツールにはソース、形式仕様、検証用サンプル、ライセンスを同梱しています。<br>ビルド識別子: <code>__BUILD__</code></footer>
+  </section>
+  </div>
+  </main>
+  <footer>
+    <div class="content">
+      <p>検証ツールにはソース、形式仕様、検証用サンプル、ライセンスを同梱しています。</p>
+      <p>ビルド識別子: <code>__BUILD__</code></p>
+    </div>
+  </footer>
 </body>
 </html>

@@ -21,10 +21,18 @@ try {
   for (const name of ["index.html", "audit-viewer.zip", "build.json", "SHA256SUMS"]) {
     await cp(join(temporary, name), join(destination, name));
   }
+  const [logoDesktop, logoMobile] = await Promise.all(
+    ["logo.svg", "logo-sp.svg"].map((name) =>
+      readFile(join(root, "apps/public-viewer/public/images", name), "utf8"),
+    ),
+  );
   const guide = (await readFile(join(root, "apps/audit-viewer/src/guide.html"), "utf8"))
     .replaceAll("__ARTIFACT__", archiveHash)
     .replaceAll("__BUILD__", build.buildSha256)
-    .replaceAll("__VERSION__", build.version);
+    .replaceAll("__VERSION__", build.version)
+    // Reuse the site's brand assets inline: the tools' CSP blocks image requests.
+    .replace("__LOGO_DESKTOP__", () => logoDesktop)
+    .replace("__LOGO_MOBILE__", () => logoMobile);
   await writeFile(join(output, "guide.html"), guide);
 } finally {
   await rm(temporary, { recursive: true, force: true });
