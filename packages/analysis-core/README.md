@@ -42,6 +42,8 @@ kouchou-analyze --config config.json
 
 CLI の canonical output は `hierarchical_result.json` です。既定ではローカル確認用の補助 HTML として `report.html` も生成しますが、これは保存・配信の対象ではありません。
 
+分析の入力・設定・成果物は、実行ごとに出力ディレクトリ外の非公開監査領域へ保存します。履歴の一覧には `kouchou-audit --report-dir outputs/<name> list`、公開候補の確認には `preview <run_id>` を使います。`export` の既定値は公開候補のZIPです。原文を含む内部監査用ZIPを取得する場合は `--audience internal` を明示してください。公開APIで配信するには管理者によるプレビュー確認と公開操作が必要です。保存先、API、Azure連携、保存容量と検証範囲は[分析・編集の監査記録](../../docs/development/audit-records.md)を参照してください。
+
 ### ライブラリとして
 
 ```python

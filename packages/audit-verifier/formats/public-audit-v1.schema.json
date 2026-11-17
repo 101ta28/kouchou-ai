@@ -1,0 +1,594 @@
+{
+  "$defs": {
+    "CountRange": {
+      "additionalProperties": false,
+      "properties": {
+        "minimum": {
+          "minimum": 0,
+          "title": "Minimum",
+          "type": "integer",
+          "multipleOf": 10
+        },
+        "maximum": {
+          "minimum": 0,
+          "title": "Maximum",
+          "type": "integer"
+        }
+      },
+      "required": ["minimum", "maximum"],
+      "title": "CountRange",
+      "type": "object"
+    },
+    "PublicCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "input_rows": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CountRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "extracted_arguments": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CountRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "linked_input_ids": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CountRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unlinked_input_ids": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CountRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "PublicCounts",
+      "type": "object",
+      "required": ["input_rows", "extracted_arguments", "linked_input_ids", "unlinked_input_ids"]
+    },
+    "PublicPrompt": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": ["builtin", "custom_or_unknown", "not_recorded"],
+          "title": "Source",
+          "type": "string"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "enum": [
+                "extraction",
+                "embedding",
+                "opinion_classification",
+                "opinion_stance",
+                "opinion_novelty",
+                "hierarchical_clustering",
+                "hierarchical_initial_labelling",
+                "hierarchical_merge_labelling",
+                "hierarchical_overview",
+                "hierarchical_aggregation",
+                "hierarchical_visualization",
+                "llm_grouping",
+                "llm_grouping_discovery",
+                "llm_grouping_assignment"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Id"
+        }
+      },
+      "required": ["source", "template_id"],
+      "title": "PublicPrompt",
+      "type": "object"
+    },
+    "PublicSoftware": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_core_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:(?:a|b|rc)[0-9]+)?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "analysis_core_source_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "git_commit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "git_dirty": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Dirty"
+        }
+      },
+      "title": "PublicSoftware",
+      "type": "object",
+      "required": ["analysis_core_version", "analysis_core_source_sha256", "git_commit", "git_dirty"]
+    },
+    "PublicStep": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "extraction",
+            "embedding",
+            "opinion_classification",
+            "opinion_stance",
+            "opinion_novelty",
+            "hierarchical_clustering",
+            "hierarchical_initial_labelling",
+            "hierarchical_merge_labelling",
+            "hierarchical_overview",
+            "hierarchical_aggregation",
+            "hierarchical_visualization",
+            "llm_grouping"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "default": "not_recorded",
+          "enum": ["completed", "failed", "skipped", "started", "not_recorded"],
+          "title": "Status",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-2.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.8-flash",
+                "gemini-embedding-001",
+                "google/gemini-2.5-pro-preview",
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-5.6-luna",
+                "gpt-5.6-terra",
+                "o3-mini",
+                "openai/gpt-4o-2024-08-06",
+                "openai/gpt-4o-mini-2024-07-18",
+                "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+                "text-embedding-3-large",
+                "text-embedding-3-small"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "timeout_seconds": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "category_batch_size": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "k": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sampling_num": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "group_count": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "discovery_sample_size": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "assignment_batch_size": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "n_neighbors": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "n_components": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "save_umap_model": {
+              "type": "boolean"
+            },
+            "cluster_nums": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              }
+            }
+          }
+        },
+        "prompts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "$ref": "#/$defs/PublicPrompt"
+            },
+            "discovery_prompt": {
+              "$ref": "#/$defs/PublicPrompt"
+            },
+            "assignment_prompt": {
+              "$ref": "#/$defs/PublicPrompt"
+            }
+          }
+        }
+      },
+      "required": ["name", "status", "model", "parameters", "prompts"],
+      "title": "PublicStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "policy_version": {
+      "const": "public-audit-v1",
+      "default": "public-audit-v1",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "audience": {
+      "const": "public",
+      "default": "public",
+      "title": "Audience",
+      "type": "string"
+    },
+    "source_run_id": {
+      "pattern": "^[0-9]{8}T[0-9]{12}Z-[a-f0-9]{32}$",
+      "title": "Source Run Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "analysis",
+        "translation",
+        "config_edit",
+        "cluster_label_edit",
+        "visibility_edit",
+        "visualization_config_edit",
+        "other"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "status": {
+      "enum": ["completed", "failed"],
+      "title": "Status",
+      "type": "string"
+    },
+    "started_at": {
+      "title": "Started At",
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "title": "Finished At",
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "enum": ["openai", "azure", "openrouter", "gemini", "local"],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-2.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-embedding-001",
+            "google/gemini-2.5-pro-preview",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "o3-mini",
+            "openai/gpt-4o-2024-08-06",
+            "openai/gpt-4o-mini-2024-07-18",
+            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            "text-embedding-3-large",
+            "text-embedding-3-small"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "analysis_mode": {
+      "anyOf": [
+        {
+          "enum": ["hierarchical", "llm_grouping"],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Mode"
+    },
+    "software": {
+      "$ref": "#/$defs/PublicSoftware"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/PublicStep"
+      },
+      "title": "Steps",
+      "type": "array",
+      "maxItems": 12
+    },
+    "counts": {
+      "$ref": "#/$defs/PublicCounts"
+    },
+    "changed_sections": {
+      "items": {
+        "enum": ["model", "prompts", "settings", "results", "labels", "visibility", "visualization"],
+        "type": "string"
+      },
+      "title": "Changed Sections",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "comparison_available": {
+      "title": "Comparison Available",
+      "type": "boolean"
+    },
+    "omitted": {
+      "const": [
+        "original_comments_and_identifiers",
+        "generated_text_and_labels",
+        "custom_prompts_and_model_aliases",
+        "attributes_and_subgroup_statistics",
+        "embeddings_and_binary_artifacts",
+        "internal_paths_and_source_links",
+        "credentials_endpoints_and_request_ids",
+        "raw_errors_and_diagnostics",
+        "internal_file_hashes",
+        "exact_counts",
+        "unrecognised_fields"
+      ]
+    },
+    "limitations": {
+      "const": [
+        "Source-text fidelity and fairness require authorised access to internal evidence.",
+        "Counts use fixed ranges of 10, including zero; no differential-privacy guarantee is made.",
+        "Settings describe recorded selections, not proof of served model weights or deterministic reproduction.",
+        "SHA-256 identifies this public document; it does not attest to the truth of the source evidence."
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "policy_version",
+    "audience",
+    "source_run_id",
+    "kind",
+    "status",
+    "started_at",
+    "finished_at",
+    "provider",
+    "model",
+    "analysis_mode",
+    "software",
+    "steps",
+    "counts",
+    "changed_sections",
+    "comparison_available",
+    "omitted",
+    "limitations"
+  ],
+  "title": "PublicDocument",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kouchou-ai:audit:public-audit-v1",
+  "description": "Public export v1. Additional semantic constraints are documented in FORMAT.md."
+}

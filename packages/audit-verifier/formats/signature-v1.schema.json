@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kouchou-ai:audit:signature-v1",
+  "description": "Detached flattened JWS; decoded protected header and payload constraints are specified in FORMAT.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protected", "signature"],
+  "properties": {
+    "protected": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
+  }
+}

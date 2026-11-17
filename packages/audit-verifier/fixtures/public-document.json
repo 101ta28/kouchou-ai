@@ -1,0 +1,88 @@
+{
+  "analysis_mode": "hierarchical",
+  "audience": "public",
+  "changed_sections": [],
+  "comparison_available": false,
+  "counts": {
+    "extracted_arguments": {
+      "maximum": 19,
+      "minimum": 10
+    },
+    "input_rows": {
+      "maximum": 29,
+      "minimum": 20
+    },
+    "linked_input_ids": {
+      "maximum": 19,
+      "minimum": 10
+    },
+    "unlinked_input_ids": {
+      "maximum": 19,
+      "minimum": 10
+    }
+  },
+  "finished_at": "2026-11-17T00:00:01+00:00",
+  "kind": "analysis",
+  "limitations": [
+    "Source-text fidelity and fairness require authorised access to internal evidence.",
+    "Counts use fixed ranges of 10, including zero; no differential-privacy guarantee is made.",
+    "Settings describe recorded selections, not proof of served model weights or deterministic reproduction.",
+    "SHA-256 identifies this public document; it does not attest to the truth of the source evidence."
+  ],
+  "model": "gpt-4o-mini",
+  "omitted": [
+    "original_comments_and_identifiers",
+    "generated_text_and_labels",
+    "custom_prompts_and_model_aliases",
+    "attributes_and_subgroup_statistics",
+    "embeddings_and_binary_artifacts",
+    "internal_paths_and_source_links",
+    "credentials_endpoints_and_request_ids",
+    "raw_errors_and_diagnostics",
+    "internal_file_hashes",
+    "exact_counts",
+    "unrecognised_fields"
+  ],
+  "policy_version": "public-audit-v1",
+  "provider": "openai",
+  "schema_version": 1,
+  "software": {
+    "analysis_core_source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "analysis_core_version": "0.1.0",
+    "git_commit": null,
+    "git_dirty": null
+  },
+  "source_run_id": "20261117T000000000000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "started_at": "2026-11-17T00:00:00+00:00",
+  "status": "completed",
+  "steps": [
+    {
+      "model": "gpt-4o-mini",
+      "name": "extraction",
+      "parameters": {
+        "limit": 1000,
+        "workers": 2
+      },
+      "prompts": {
+        "prompt": {
+          "source": "builtin",
+          "template_id": "extraction"
+        }
+      },
+      "status": "completed"
+    },
+    {
+      "model": null,
+      "name": "hierarchical_clustering",
+      "parameters": {
+        "cluster_nums": [
+          5,
+          2
+        ],
+        "seed": 42
+      },
+      "prompts": {},
+      "status": "completed"
+    }
+  ]
+}

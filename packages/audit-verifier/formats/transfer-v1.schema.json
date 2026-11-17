@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kouchou-ai:audit:transfer-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "type", "audience", "source_run_id", "files"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "type": { "const": "kouchou-audit-transfer" },
+    "audience": { "enum": ["public", "internal"] },
+    "source_run_id": { "type": "string", "pattern": "^[0-9]{8}T[0-9]{12}Z-[a-f0-9]{32}$" },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4094,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    }
+  }
+}

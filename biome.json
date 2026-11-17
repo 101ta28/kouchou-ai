@@ -7,7 +7,15 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "ignore": ["server", ".next", "node_modules", "out", "hierarchical_result.json", "tsconfig.json"]
+    "ignore": [
+      "server",
+      ".next",
+      "node_modules",
+      "out",
+      "hierarchical_result.json",
+      "tsconfig.json",
+      "packages/audit-verifier/fixtures/**"
+    ]
   },
   "formatter": {
     "enabled": true,

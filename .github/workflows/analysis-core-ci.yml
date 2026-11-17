@@ -7,6 +7,9 @@ on:
       - "packages/analysis-core/**/*.py"
       - "packages/analysis-core/pyproject.toml"
       - "packages/analysis-core/requirements*.lock"
+      - "packages/audit-verifier/formats/**"
+      - "packages/audit-verifier/fixtures/**"
+      - "packages/audit-verifier/scripts/**"
       - ".github/workflows/analysis-core-ci.yml"
   pull_request:
     branches: [main]
@@ -14,6 +17,9 @@ on:
       - "packages/analysis-core/**/*.py"
       - "packages/analysis-core/pyproject.toml"
       - "packages/analysis-core/requirements*.lock"
+      - "packages/audit-verifier/formats/**"
+      - "packages/audit-verifier/fixtures/**"
+      - "packages/audit-verifier/scripts/**"
       - ".github/workflows/analysis-core-ci.yml"
   workflow_dispatch:
 

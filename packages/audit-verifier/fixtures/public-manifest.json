@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "audience": "public",
+  "policy_version": "public-audit-v1",
+  "source_run_id": "20261117T000000000000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "files": [
+    {
+      "path": "audit.json",
+      "sha256": "2a5441bfb09fa886e025f72226e1542fc5c8c92df312334fcc607d96780f550e",
+      "bytes": 2355
+    }
+  ],
+  "notice": "Review required before sharing. This archive contains no proof of source-text fidelity."
+}

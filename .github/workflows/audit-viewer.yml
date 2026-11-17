@@ -1,0 +1,54 @@
+name: Independent audit viewer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/audit-viewer/**'
+      - 'packages/audit-verifier/**'
+      - 'docs/development/independent-audit.md'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/audit-viewer.yml'
+  pull_request:
+    paths:
+      - 'apps/audit-viewer/**'
+      - 'packages/audit-verifier/**'
+      - 'docs/development/independent-audit.md'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/audit-viewer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check verification and viewer source
+        run: pnpm exec biome check packages/audit-verifier/src packages/audit-verifier/bin packages/audit-verifier/tests apps/audit-viewer/src/viewer.mjs apps/audit-viewer/build.mjs apps/audit-viewer/tests
+      - name: Build without the API or analysis environment
+        run: node apps/audit-viewer/build.mjs
+      - name: Verify formats, signatures and reproducible distribution
+        run: node --test --experimental-test-isolation=none packages/audit-verifier/tests/*.test.mjs apps/audit-viewer/tests/build.test.mjs
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Exercise offline browser flows
+        run: node --test --experimental-test-isolation=none apps/audit-viewer/tests/browser.test.mjs
+      - name: Upload reviewable distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-audit-viewer-${{ github.sha }}
+          path: apps/audit-viewer/dist/
+          if-no-files-found: error
+          retention-days: 14

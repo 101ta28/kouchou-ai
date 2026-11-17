@@ -132,6 +132,8 @@ nav:
       - プラグインガイド: development/plugin-guide.md
       - プラグイン出力データ構造: development/plugin-output-data-structures.md
       - 公開用レポート結果（public_result.json）: development/public-result.md
+      - 分析・編集の監査記録: development/audit-records.md
+      - 独立した監査資料の閲覧・検証: development/independent-audit.md
       - プラグインシステムの設計思想: development/why-plugin-system.md
       - PyPI公開: development/pypi-release.md
       - コードレビューガイドライン: development/code-review-guidelines.md

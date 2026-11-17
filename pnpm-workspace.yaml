@@ -3,6 +3,7 @@ packages:
   - "apps/public-viewer"
   - "apps/admin"
   - "apps/static-site-builder"
+  - "apps/audit-viewer"
   # 共通パッケージ
   - "packages/*"
   # プラグイン

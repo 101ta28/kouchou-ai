@@ -133,6 +133,8 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  apps/audit-viewer: {}
+
   apps/public-viewer:
     dependencies:
       '@chakra-ui/react':
@@ -245,6 +247,8 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/audit-verifier: {}
 
   packages/report-schema:
     devDependencies:
