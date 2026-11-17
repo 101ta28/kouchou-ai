@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import zipfile
@@ -141,7 +142,7 @@ def test_azure_release_roundtrip_and_withdrawal_ignore_stale_local_state(publica
         public_audit.get_public_audit("report", run_id)
 
 
-@pytest.mark.parametrize("failure", ["state.json", "/events/", ".json"])
+@pytest.mark.parametrize("failure", ["state.json", "/events/", ".json", ".zip"])
 def test_azure_failure_does_not_claim_success(publication, monkeypatch, failure):
     settings, run_id, _ = publication
     settings.STORAGE_TYPE = "azure_blob"
@@ -196,6 +197,17 @@ async def test_http_review_publish_public_download_and_withdrawal(publication, m
         assert downloaded.status_code == 200 and downloaded.headers["cache-control"] == "no-store"
         with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
             assert set(archive.namelist()) == {"audit.json", "manifest.json"}
+        assert (await client.get(f"{public}/{run_id}/download")).content == downloaded.content
+        row = (await client.get(public)).json()["records"][0]
+        assert row["archive_sha256"] == hashlib.sha256(downloaded.content).hexdigest()
+        assert row["archive_bytes"] == len(downloaded.content)
+        assert row["kind"] == "analysis" and row["started_at"]
+        assert "document" not in row
+        assert downloaded.headers["x-audit-archive-sha256"] == row["archive_sha256"]
+        assert (await client.get(f"{public}/{run_id}/download?release_id={'0' * 64}")).status_code == 409
+        assert (
+            await client.get(f"{public}/{run_id}/download?release_id={row['release_id']}")
+        ).content == downloaded.content
         assert (await client.get(admin + "/download")).status_code == 401
         report.visibility = ReportVisibility.PRIVATE
         assert (await client.get(public)).status_code == 404
@@ -203,3 +215,108 @@ async def test_http_review_publish_public_download_and_withdrawal(publication, m
         report.visibility = ReportVisibility.PUBLIC
         assert (await client.delete(admin + "/publication", headers=headers)).status_code == 204
         assert (await client.get(f"{public}/{run_id}")).status_code == 404
+        assert (await client.get(f"{public}/{run_id}/download")).status_code == 404
+
+
+def test_zip_is_frozen_and_not_regenerated_on_download(publication, monkeypatch):
+    settings, run_id, _ = publication
+    release = _publish(run_id)
+    path = AuditStore(settings.REPORT_DIR / "report").path / "publications" / run_id / f"{release['release_id']}.zip"
+    expected = path.read_bytes()
+    monkeypatch.setattr(public_audit, "export_public_audit", lambda *args: pytest.fail("Must use stored ZIP"))
+    assert public_audit.download_public_audit("report", run_id)[0] == expected
+    assert _publish(run_id) == release
+
+
+@pytest.mark.parametrize("corruption", ["missing", "tampered"])
+def test_missing_or_changed_published_zip_is_rejected(publication, corruption):
+    settings, run_id, _ = publication
+    release = _publish(run_id)
+    path = AuditStore(settings.REPORT_DIR / "report").path / "publications" / run_id / f"{release['release_id']}.zip"
+    if corruption == "missing":
+        path.unlink()
+    else:
+        data = bytearray(path.read_bytes())
+        data[-1] ^= 1
+        path.write_bytes(data)
+    with pytest.raises(public_audit.AuditError):
+        public_audit.download_public_audit("report", run_id)
+    with pytest.raises(public_audit.AuditError):
+        _publish(run_id)
+
+
+@pytest.mark.parametrize("through_publish", [False, True])
+def test_legacy_publication_freezes_approved_document_preserving_time(publication, monkeypatch, through_publish):
+    settings, run_id, _ = publication
+    preview = public_audit.preview_public_audit("report", run_id)
+    directory = AuditStore(settings.REPORT_DIR / "report").path / "publications" / run_id
+    directory.mkdir(parents=True)
+    published_at = "2026-01-01T00:00:00+00:00"
+    (directory / f"{preview['sha256']}.json").write_text(json.dumps(preview["document"]))
+    (directory / "state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "source_run_id": run_id,
+                "status": "published",
+                "release_id": preview["sha256"],
+                "updated_at": published_at,
+            }
+        )
+    )
+    if not through_publish:
+        monkeypatch.setattr(
+            public_audit, "preview_public_audit", lambda *args: pytest.fail("Do not rebuild approved content")
+        )
+    release = _publish(run_id) if through_publish else public_audit.get_public_audit("report", run_id)
+    data, _ = public_audit.download_public_audit("report", run_id)
+    assert release["published_at"] == published_at
+    assert release["archive_sha256"] == hashlib.sha256(data).hexdigest()
+    assert release["document"] == preview["document"]
+
+
+def test_withdrawal_during_download_wins(publication, monkeypatch):
+    _, run_id, _ = publication
+    _publish(run_id)
+    original = public_audit._archive_bytes
+
+    def withdraw_after_read(*args):
+        data = original(*args)
+        public_audit.withdraw_public_audit("report", run_id)
+        return data
+
+    monkeypatch.setattr(public_audit, "_archive_bytes", withdraw_after_read)
+    with pytest.raises(FileNotFoundError):
+        public_audit.download_public_audit("report", run_id)
+
+
+def test_azure_archive_is_read_from_remote_after_restart(publication, monkeypatch, tmp_path):
+    settings, run_id, status = publication
+    settings.STORAGE_TYPE = "azure_blob"
+    storage = MemoryStorage()
+    monkeypatch.setattr(internal, "audit_storage", lambda: storage)
+    assert internal.sync_audit_to_storage("report")
+    release = _publish(run_id)
+    expected, _ = public_audit.download_public_audit("report", run_id)
+    monkeypatch.setenv("KOUCHOU_AUDIT_DIR", str(tmp_path / "restarted"))
+    assert public_audit.download_public_audit("report", run_id)[0] == expected
+    blob = f"public-audits/report/{run_id}/{release['release_id']}.zip"
+    storage.blobs[blob] = b"tampered"
+    with pytest.raises(public_audit.AuditError):
+        public_audit.download_public_audit("report", run_id)
+
+
+def test_private_report_during_archive_generation_is_not_published(publication, monkeypatch):
+    _, run_id, status = publication
+    original = public_audit._freeze_archive
+
+    def make_private(*args):
+        result = original(*args)
+        status.visibility = ReportVisibility.PRIVATE
+        return result
+
+    monkeypatch.setattr(public_audit, "_freeze_archive", make_private)
+    with pytest.raises(FileNotFoundError):
+        _publish(run_id)
+    status.visibility = ReportVisibility.PUBLIC
+    assert public_audit.list_public_audits("report") == []

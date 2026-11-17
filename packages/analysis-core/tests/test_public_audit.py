@@ -10,6 +10,16 @@ from analysis_core.audit_cli import main
 from analysis_core.public_audit import build_public_audit, document_bytes, document_digest, export_public_audit
 
 
+def test_public_zip_bytes_do_not_depend_on_export_time(evidence, tmp_path, monkeypatch):
+    store, run_id, _ = evidence
+    document = build_public_audit(store, run_id)
+    first, second = tmp_path / "first.zip", tmp_path / "second.zip"
+    export_public_audit(document, first)
+    monkeypatch.setattr(zipfile.time, "localtime", lambda *args: (2030, 4, 5, 6, 7, 8, 0, 0, 0))
+    export_public_audit(document, second)
+    assert first.read_bytes() == second.read_bytes()
+
+
 @pytest.fixture
 def evidence(tmp_path, monkeypatch):
     monkeypatch.delenv("KOUCHOU_AUDIT_DIR", raising=False)

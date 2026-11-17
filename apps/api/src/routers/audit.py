@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Literal
 
 from analysis_core.audit import AuditError
-from analysis_core.public_audit import export_public_audit
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -46,13 +45,18 @@ class PublishAuditRequest(BaseModel):
 
 
 def publication_error(exc: Exception, *, public: bool = False) -> HTTPException:
+    headers = {"Cache-Control": "no-store"}
     if isinstance(exc, FileNotFoundError):
-        return HTTPException(404, "Audit publication or public report not found")
+        return HTTPException(404, "Audit publication or public report not found", headers=headers)
+    if isinstance(exc, public_audit.PublicationConflict):
+        return HTTPException(409, "The selected audit release changed; refresh the list", headers=headers)
     if isinstance(exc, AuditError):
-        return HTTPException(503 if public else 409, "Audit publication is unavailable or the preview changed")
+        return HTTPException(
+            503 if public else 409, "Audit publication is unavailable or the preview changed", headers=headers
+        )
     if isinstance(exc, OSError):
-        return HTTPException(503, "Audit publication storage is unavailable")
-    return HTTPException(503 if public else 400, "Invalid audit publication data")
+        return HTTPException(503, "Audit publication storage is unavailable", headers=headers)
+    return HTTPException(503 if public else 400, "Invalid audit publication data", headers=headers)
 
 
 @router.get("/{run_id}/public-preview")
@@ -86,7 +90,21 @@ def withdraw_public_audit(slug: str, run_id: str):
 def list_public_audits(slug: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
     try:
         records = public_audit.list_public_audits(slug)
-        return {"total": len(records), "records": records[offset : offset + limit]}
+        page = []
+        for record in records[offset : offset + limit]:
+            release = public_audit.get_public_audit(slug, record["run_id"])
+            document = release.pop("document")
+            page.append(
+                {
+                    "run_id": record["run_id"],
+                    **release,
+                    "kind": document["kind"],
+                    "started_at": document["started_at"],
+                    "finished_at": document["finished_at"],
+                    "status": document["status"],
+                }
+            )
+        return {"total": len(records), "records": page}
     except (AuditError, OSError, ValueError) as exc:
         raise publication_error(exc, public=True) from exc
 
@@ -100,29 +118,21 @@ def get_public_audit(slug: str, run_id: str):
 
 
 @public_router.get("/{run_id}/download")
-def download_public_audit(slug: str, run_id: str):
-    destination = None
+def download_public_audit(slug: str, run_id: str, release_id: str | None = Query(None, pattern=r"^[a-f0-9]{64}$")):
     try:
-        release = public_audit.get_public_audit(slug, run_id)
-        fd, filename = tempfile.mkstemp(prefix="kouchou-public-audit-", suffix=".zip")
-        os.close(fd)
-        destination = Path(filename)
-        export_public_audit(release["document"], destination)
-        return FileResponse(
-            destination,
-            filename=f"public-audit-{run_id}.zip",
+        data, release = public_audit.download_public_audit(slug, run_id, release_id)
+        return Response(
+            content=data,
             media_type="application/zip",
-            headers={"Cache-Control": "no-store"},
-            background=BackgroundTask(destination.unlink, missing_ok=True),
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": f'attachment; filename="public-audit-{run_id}-{release["release_id"][:12]}.zip"',
+                "X-Content-Type-Options": "nosniff",
+                "X-Audit-Archive-SHA256": release["archive_sha256"],
+            },
         )
     except (AuditError, OSError, ValueError) as exc:
-        if destination:
-            destination.unlink(missing_ok=True)
         raise publication_error(exc, public=True) from exc
-    except BaseException:
-        if destination:
-            destination.unlink(missing_ok=True)
-        raise
 
 
 @router.get("")

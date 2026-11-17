@@ -443,6 +443,15 @@ def export_public_audit(document: dict, destination: Path) -> None:
         "files": [{"path": "audit.json", "sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}],
         "notice": "Review required before sharing. This archive contains no proof of source-text fidelity.",
     }
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("audit.json", payload)
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    # Fixed metadata and STORE make the entire ZIP reproducible across machines
+    # and zlib versions. Public summaries are small; avoid packaging timestamps
+    # changing the digest of an otherwise identical release.
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, content in (
+            ("audit.json", payload),
+            ("manifest.json", (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()),
+        ):
+            entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            entry.create_system = 3
+            entry.external_attr = 0o100600 << 16
+            archive.writestr(entry, content)
