@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>監査資料を手元で確認する · 広聴AI</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #25342f; background: #f7f9f8; }
+    body { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; line-height: 1.85; }
+    h1 { font-size: clamp(1.6rem, 5vw, 2.1rem); line-height: 1.5; } h2 { margin-top: 2rem; font-size: 1.25rem; }
+    a { color: #176347; text-underline-offset: .2em; } a:focus-visible { outline: 3px solid #176347; outline-offset: 4px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+    .actions a { padding: 10px 16px; background: white; border: 1px solid #176347; border-radius: 6px; }
+    pre { background: #eaf0ed; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; }
+    code { overflow-wrap: anywhere; } li { margin-bottom: .5rem; } footer { border-top: 1px solid #ccd7d1; margin-top: 40px; padding-top: 16px; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <p>広聴AI · 公開監査資料</p>
+  <h1>監査資料を手元で確認する</h1>
+  <p>レポートから取得したZIPの内容とファイルの整合性を確認できます。ブラウザとCLIのどちらも端末内で処理し、資料をサーバーへ送信しません。広聴AIへのログインは不要です。</p>
+  <div class="actions">
+    <a href="./__ARTIFACT__/audit-viewer.zip" download>検証ツールをダウンロード（ZIP）</a>
+    <a href="./__ARTIFACT__/index.html">ブラウザで検証ツールを開く</a>
+  </div>
+  <p>ツールの版: __VERSION__ · <a href="./__ARTIFACT__/SHA256SUMS" download>ツールのSHA-256を保存</a></p>
+  <h2>ブラウザで確認する</h2>
+  <ol>
+    <li>レポートの「公開監査資料」から資料のZIPを保存します。</li>
+    <li>上の検証ツールをダウンロードして展開し、<code>index.html</code> をブラウザで開きます。一度取得すればネット接続は不要です。オンラインで開いた場合も、選んだ資料をアップロードしません。</li>
+    <li>「公開監査」を選び、「資料AのZIP」に資料を指定して「資料を検査する」を押します。比較する資料があれば「資料BのZIP」に指定できます。</li>
+    <li>内容と検査結果を確認し、必要に応じて「検査結果を保存」または「印刷・PDF保存」を使います。</li>
+  </ol>
+  <p>動作確認対象はChromium系ブラウザです。資料ZIPは再圧縮せず、そのまま読み込んでください。</p>
+  <h2>CLIで確認する</h2>
+  <p>Node.js 22.17以降を用意し、検証ツールの展開先で次のコマンドを実行します。Pythonや追加のnpmパッケージは不要です。<code>public-audit.zip</code> は取得した資料のパスに置き換えてください。</p>
+  <pre>node packages/audit-verifier/bin/audit-release.mjs verify public-audit.zip --output verification.json</pre>
+  <p>別経路で取得したZIPのSHA-256を照合する場合は <code>--expected-sha256 値</code>、署名を確認する場合は <code>--public-key 確認済み公開鍵.pem</code> を追加します。終了コード0は指定した検査に不一致がなかったことを示します。署名なし・未検査の項目はJSONで個別に確認してください。</p>
+  <h2>確認できる範囲</h2>
+  <p>公開資料には、公開可能な分析条件・処理記録が含まれます。元コメントは含まれず、原文に忠実な抽出か、分類が公平かを自動判定するものではありません。資料の日時は記載値であり、現在のレポートとの一致や、すべての実行記録が公開されていることを保証しません。</p>
+  <p>ハッシュ一致は資料内の整合性の確認です。発行者の確認には、別の信頼できる経路で確認した公開鍵と署名が必要です。オフラインでは公開取り消し、最新版、鍵の失効状況は確認できません。引用・利用時には発行元のお知らせも確認してください。</p>
+  <p>資料のZIPと検査結果を一緒に保存してください。公開資料の識別子とZIP全体のSHA-256は別の値です。署名の追加などでZIPが変われば、ZIPのSHA-256も変わります。</p>
+  <footer>検証ツールにはソース、形式仕様、検証用サンプル、ライセンスを同梱しています。<br>ビルド識別子: <code>__BUILD__</code></footer>
+</body>
+</html>

@@ -13,6 +13,10 @@ COPY packages/report-schema packages/report-schema
 COPY apps/static-site-builder apps/static-site-builder
 COPY apps/shared apps/shared
 COPY apps/public-viewer apps/public-viewer
+COPY apps/audit-viewer apps/audit-viewer
+COPY packages/audit-verifier packages/audit-verifier
+COPY docs/development/independent-audit.md docs/development/independent-audit.md
+COPY LICENSE LICENSE
 
 RUN node_modules/.bin/tsc --project packages/report-schema/tsconfig.json
 RUN node_modules/.bin/tsc --project apps/static-site-builder/tsconfig.json
@@ -41,6 +45,9 @@ COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/apps/shared ./apps/shared
 COPY --from=builder /repo/apps/public-viewer ./apps/public-viewer
+COPY --from=builder /repo/apps/audit-viewer ./apps/audit-viewer
+COPY --from=builder /repo/docs/development/independent-audit.md ./docs/development/independent-audit.md
+COPY --from=builder /repo/LICENSE ./LICENSE
 # Remove per-package node_modules/.bin shims whose relative paths point to the wrong location
 # due to shamefully-hoist=true; pnpm's PATH injection falls back to /repo/node_modules/.bin/next
 RUN rm -rf apps/public-viewer/node_modules

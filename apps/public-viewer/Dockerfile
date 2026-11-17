@@ -24,6 +24,10 @@ RUN pnpm install --frozen-lockfile
 COPY packages/report-schema packages/report-schema
 COPY apps/shared apps/shared
 COPY apps/public-viewer apps/public-viewer
+COPY apps/audit-viewer apps/audit-viewer
+COPY packages/audit-verifier packages/audit-verifier
+COPY docs/development/independent-audit.md docs/development/independent-audit.md
+COPY LICENSE LICENSE
 
 RUN node_modules/.bin/tsc --project packages/report-schema/tsconfig.json
 RUN pnpm --filter @kouchou-ai/public-viewer build

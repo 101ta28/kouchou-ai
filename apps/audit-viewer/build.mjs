@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 import { writeArchive } from "../../packages/audit-verifier/src/archive.mjs";
+import { VERSION } from "../../packages/audit-verifier/src/verify.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const app = fileURLToPath(new URL("./", import.meta.url));
@@ -53,7 +54,7 @@ await mkdir(output, { recursive: true });
 await writeFile(join(output, "index.html"), html);
 await writeFile(
   join(output, "build.json"),
-  `${JSON.stringify({ version: "1.0.0", buildSha256: buildId, htmlSha256: sha256(html) }, null, 2)}\n`,
+  `${JSON.stringify({ version: VERSION, buildSha256: buildId, htmlSha256: sha256(html) }, null, 2)}\n`,
 );
 const distribution = new Map([
   ["index.html", Buffer.from(html)],

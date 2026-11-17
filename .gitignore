@@ -14,6 +14,7 @@ dist
 .tmp/
 apps/public-viewer/out-root/
 apps/public-viewer/out-subdir/
+apps/public-viewer/public/audit-tools/
 
 # Claude Code
 .claude/

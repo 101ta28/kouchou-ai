@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/prepare-audit-tools.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/prepare-audit-tools.mjs",
     "build": "node scripts/with-renamed-files.mjs next build",
-    "prebuild:static": "pnpm run copy-image",
+    "prebuild:static": "pnpm run copy-image && node scripts/prepare-audit-tools.mjs",
     "build:static": "NEXT_PUBLIC_OUTPUT_MODE=export node scripts/with-renamed-files.mjs next build",
-    "prebuild:shell": "pnpm run copy-image",
+    "postbuild:static": "node scripts/export-public-audits.mjs",
+    "prebuild:shell": "pnpm run copy-image && node scripts/prepare-audit-tools.mjs",
     "build:shell": "NEXT_PUBLIC_OUTPUT_MODE=export NEXT_PUBLIC_STATIC_SHELL=1 node scripts/with-renamed-files.mjs next build --webpack",
     "copy-image": "node scripts/copy-image.mjs",
     "rename-file": "node scripts/rename-file.mjs rename",
@@ -16,7 +19,7 @@
     "start:static": "http-server out -p 3000",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "jest && node --test scripts/copy-image.test.mjs",
+    "test": "jest && node --test scripts/copy-image.test.mjs scripts/export-public-audits.test.mjs",
     "typegen:chakra": "npx @chakra-ui/cli typegen ./components/theme/system.ts"
   },
   "dependencies": {

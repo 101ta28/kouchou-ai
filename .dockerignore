@@ -109,3 +109,20 @@ packages/*/.pytest_cache/
 
 # utils (dummy server not needed in production containers)
 utils/
+
+# The offline audit toolkit ships its sources, specifications and tests. These
+# specific files are needed by its reproducible distribution build in the viewer.
+!apps/audit-viewer/README.md
+!apps/audit-viewer/tests/
+!apps/audit-viewer/tests/**
+!packages/audit-verifier/README.md
+!packages/audit-verifier/FORMAT.md
+!packages/audit-verifier/fixtures/README.md
+!packages/audit-verifier/tests/
+!packages/audit-verifier/tests/**
+!docs/
+docs/*
+!docs/development/
+docs/development/*
+!docs/development/independent-audit.md
+apps/public-viewer/public/audit-tools/
