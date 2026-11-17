@@ -1,8 +1,11 @@
 import csv
 
+from analysis_core.core.utils import atomic_output_path
+
 from src.config import settings
 from src.core.exceptions import ClusterCSVParseError, ClusterFileNotFound, ClusterNotFound
 from src.schemas.cluster import ClusterResponse, ClusterUpdate
+from src.services.audit import audit_edit
 from src.utils.logger import setup_logger
 
 slogger = setup_logger()
@@ -56,6 +59,12 @@ class ClusterRepository:
             raise ClusterCSVParseError(f"Error reading CSV file: {e}") from e
 
     def update_csv(self, updated_cluster: ClusterUpdate) -> bool:
+        with audit_edit(self.slug, "cluster_label_edit") as audit:
+            result = self._update_csv(updated_cluster)
+            audit.success = result
+            return result
+
+    def _update_csv(self, updated_cluster: ClusterUpdate) -> bool:
         """中間ファイル（CSVファイル）を更新する
 
         元ファイルの列構成（density 列の無い llm_grouping の出力を含む）を保ったまま、
@@ -86,12 +95,11 @@ class ClusterRepository:
             if not found:
                 raise ClusterNotFound(f"Cluster not found: {updated_cluster.id}")
 
-            with open(self.labels_path, mode="w", encoding="utf-8", newline="") as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-                writer.writeheader()
-                for row in rows:
-                    writer.writerow(row)
+            with atomic_output_path(self.labels_path) as temporary:
+                with open(temporary, mode="w", encoding="utf-8", newline="") as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
             return True
         except ClusterNotFound:
             raise

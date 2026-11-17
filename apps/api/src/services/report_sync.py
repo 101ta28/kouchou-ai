@@ -49,6 +49,15 @@ class ReportSyncService:
     def __init__(self):
         self.storage_service = get_storage_service()
 
+    def sync_audit_to_storage(self, slug: str) -> bool:
+        from src.services.audit import sync_audit_to_storage
+
+        try:
+            return sync_audit_to_storage(slug)
+        except Exception:
+            logger.exception("Failed to persist private audit evidence")
+            return False
+
     def sync_status_file_to_storage(self) -> bool:
         """ステータスファイルをストレージにアップロードする
 

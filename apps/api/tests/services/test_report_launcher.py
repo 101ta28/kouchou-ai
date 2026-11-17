@@ -298,6 +298,9 @@ def test_launch_report_generation_from_config_runs_full_service_flow(monkeypatch
             self.target(*self.args, **self.kwargs)
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             calls["syncs"].append(("report", value))
             return True
@@ -404,6 +407,9 @@ def test_launch_report_generation_runs_full_service_flow(monkeypatch, tmp_path):
             self.target(*self.args, **self.kwargs)
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             calls["syncs"].append(("report", value))
             return True
@@ -565,6 +571,9 @@ def test_monitor_process_reads_workflow_status_and_syncs_outputs(monkeypatch, tm
             return 0
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             calls["syncs"].append(("report", value))
             return True
@@ -631,6 +640,9 @@ def test_monitor_process_marks_error_when_artifact_upload_fails(monkeypatch, tmp
             return 0
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             calls["syncs"].append(("report", value))
             return False
@@ -736,6 +748,9 @@ def test_monitor_process_preserves_existing_report_status_during_aggregation_rer
             return 0
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             syncs.append(("report", value))
             return True
@@ -933,6 +948,9 @@ def test_execute_aggregation_runs_monitor_flow_and_preserves_existing_status(mon
             self.target(*self.args, **self.kwargs)
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             calls["syncs"].append(("report", value))
             return True
@@ -1044,6 +1062,9 @@ def test_recover_interrupted_reports_settles_processing_entries(monkeypatch, tmp
     syncs = []
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             syncs.append(("report", value))
             return True
@@ -1133,6 +1154,9 @@ def _setup_deleted_report(monkeypatch, tmp_path, slug):
     report_status.save_status()
 
     class DummyReportSyncService:
+        def sync_audit_to_storage(self, value):
+            return True
+
         def sync_report_files_to_storage(self, value):
             return True
 

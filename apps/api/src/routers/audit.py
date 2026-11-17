@@ -1,0 +1,191 @@
+"""Administrator access to evidence and reviewed summaries for public access."""
+
+import os
+import tempfile
+from pathlib import Path
+from typing import Literal
+
+from analysis_core.audit import AuditError
+from analysis_core.public_audit import export_public_audit
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.background import BackgroundTask
+
+from src.routers.admin_report import verify_admin_api_key
+from src.services import public_audit
+from src.services.audit import restore_audit_files, restore_audit_index
+from src.utils.slug_utils import validate_slug
+
+
+def private_response(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+
+
+router = APIRouter(
+    prefix="/admin/reports/{slug}/audit",
+    dependencies=[Depends(verify_admin_api_key), Depends(private_response)],
+)
+
+# This endpoint intentionally needs no API key. Only explicitly published
+# summaries of READY + PUBLIC reports can reach it.
+public_router = APIRouter(prefix="/reports/{slug}/audit", dependencies=[Depends(private_response)])
+
+
+class PublishAuditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reviewed: Literal[True]
+
+    @field_validator("reviewed", mode="before")
+    @classmethod
+    def explicit_review(cls, value):
+        if value is not True:
+            raise ValueError("Explicit review is required")
+        return value
+
+
+def publication_error(exc: Exception, *, public: bool = False) -> HTTPException:
+    if isinstance(exc, FileNotFoundError):
+        return HTTPException(404, "Audit publication or public report not found")
+    if isinstance(exc, AuditError):
+        return HTTPException(503 if public else 409, "Audit publication is unavailable or the preview changed")
+    if isinstance(exc, OSError):
+        return HTTPException(503, "Audit publication storage is unavailable")
+    return HTTPException(503 if public else 400, "Invalid audit publication data")
+
+
+@router.get("/{run_id}/public-preview")
+def preview_public_audit(slug: str, run_id: str):
+    validate_slug(slug)
+    try:
+        return public_audit.preview_public_audit(slug, run_id)
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc) from exc
+
+
+@router.put("/{run_id}/publication")
+def publish_public_audit(slug: str, run_id: str, request: PublishAuditRequest):
+    validate_slug(slug)
+    try:
+        return public_audit.publish_public_audit(slug, run_id, request.sha256)
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc) from exc
+
+
+@router.delete("/{run_id}/publication", status_code=204)
+def withdraw_public_audit(slug: str, run_id: str):
+    validate_slug(slug)
+    try:
+        public_audit.withdraw_public_audit(slug, run_id)
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc) from exc
+
+
+@public_router.get("")
+def list_public_audits(slug: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    try:
+        records = public_audit.list_public_audits(slug)
+        return {"total": len(records), "records": records[offset : offset + limit]}
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc, public=True) from exc
+
+
+@public_router.get("/{run_id}")
+def get_public_audit(slug: str, run_id: str):
+    try:
+        return public_audit.get_public_audit(slug, run_id)
+    except (AuditError, OSError, ValueError) as exc:
+        raise publication_error(exc, public=True) from exc
+
+
+@public_router.get("/{run_id}/download")
+def download_public_audit(slug: str, run_id: str):
+    destination = None
+    try:
+        release = public_audit.get_public_audit(slug, run_id)
+        fd, filename = tempfile.mkstemp(prefix="kouchou-public-audit-", suffix=".zip")
+        os.close(fd)
+        destination = Path(filename)
+        export_public_audit(release["document"], destination)
+        return FileResponse(
+            destination,
+            filename=f"public-audit-{run_id}.zip",
+            media_type="application/zip",
+            headers={"Cache-Control": "no-store"},
+            background=BackgroundTask(destination.unlink, missing_ok=True),
+        )
+    except (AuditError, OSError, ValueError) as exc:
+        if destination:
+            destination.unlink(missing_ok=True)
+        raise publication_error(exc, public=True) from exc
+    except BaseException:
+        if destination:
+            destination.unlink(missing_ok=True)
+        raise
+
+
+@router.get("")
+def list_audit(slug: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    validate_slug(slug)
+    records = restore_audit_index(slug).list_records()
+    return {
+        "total": len(records),
+        "records": [
+            {key: row[key] for key in ("run_id", "kind", "status", "started_at", "finished_at", "parent_run_id")}
+            for row in records[offset : offset + limit]
+        ],
+    }
+
+
+@router.get("/{run_id}")
+def get_audit(slug: str, run_id: str):
+    validate_slug(slug)
+    try:
+        return restore_audit_index(slug).read(run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Audit record not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid audit run ID") from exc
+
+
+@router.get("/{run_id}/verify")
+def verify_audit(slug: str, run_id: str):
+    validate_slug(slug)
+    try:
+        return restore_audit_files(slug, run_id).verify(run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "Audit record not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid audit run ID") from exc
+
+
+@router.get("/{run_id}/download")
+def download_audit(slug: str, run_id: str):
+    validate_slug(slug)
+    destination = None
+    try:
+        store = restore_audit_files(slug, run_id)
+        fd, filename = tempfile.mkstemp(prefix="kouchou-audit-", suffix=".zip")
+        os.close(fd)
+        destination = Path(filename)
+        store.export(run_id, destination)
+        return FileResponse(
+            destination,
+            filename=f"{slug}-audit-{run_id}.zip",
+            media_type="application/zip",
+            headers={"Cache-Control": "no-store"},
+            background=BackgroundTask(destination.unlink, missing_ok=True),
+        )
+    except FileNotFoundError as exc:
+        if destination:
+            destination.unlink(missing_ok=True)
+        raise HTTPException(404, "Audit record not found") from exc
+    except (AuditError, ValueError) as exc:
+        if destination:
+            destination.unlink(missing_ok=True)
+        raise HTTPException(409, "Audit evidence is unavailable or the operation is incomplete") from exc
+    except BaseException:
+        if destination:
+            destination.unlink(missing_ok=True)
+        raise

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     STORAGE_TYPE: StorageType = Field(env="STORAGE_TYPE", default="local")
     AZURE_BLOB_STORAGE_ACCOUNT_NAME: str | None = Field(env="AZURE_BLOB_STORAGE_ACCOUNT_NAME", default=None)
     AZURE_BLOB_STORAGE_CONTAINER_NAME: str | None = Field(env="AZURE_BLOB_STORAGE_CONTAINER_NAME", default=None)
+    AZURE_AUDIT_CONTAINER_NAME: str | None = None
 
     @property
     def azure_blob_storage_account_url(self) -> str:

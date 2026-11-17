@@ -150,7 +150,7 @@ class AzureBlobStorageService(StorageService):
     ファイルやディレクトリのアップロード・ダウンロードをAzure Blob Storageとの間で行います。
     """
 
-    def __init__(self):
+    def __init__(self, container_name: str | None = None, require_private: bool = False):
         """AzureBlobStorageServiceのコンストラクタ
 
         設定からAzure Blob Storageの接続情報を取得し、クライアントを初期化します。
@@ -160,8 +160,10 @@ class AzureBlobStorageService(StorageService):
             credential=DefaultAzureCredential(),
         )
         self.container_client = self.blob_service_client.get_container_client(
-            settings.AZURE_BLOB_STORAGE_CONTAINER_NAME
+            container_name or settings.AZURE_BLOB_STORAGE_CONTAINER_NAME
         )
+        if require_private and self.container_client.get_container_properties().get("public_access"):
+            raise ValueError("Audit storage requires an Azure container with anonymous access disabled")
 
     def _has_target_suffix(self, blob_path: str, target_suffixes: tuple[str, ...] = ()) -> bool:
         """指定されたsuffixで終わるファイルを判定する

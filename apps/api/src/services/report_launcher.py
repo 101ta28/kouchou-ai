@@ -269,6 +269,8 @@ def _sync_report_artifacts_to_storage(slug: str) -> bool:
     try:
         # 1つが失敗しても残りは試み、結果を集約する
         results = [
+            # Private evidence is persisted separately and participates in readiness.
+            report_sync_service.sync_audit_to_storage(slug),
             # レポートファイルをストレージに同期し、JSONファイル以外を削除
             report_sync_service.sync_report_files_to_storage(slug),
             # 入力ファイルをストレージに同期
@@ -289,7 +291,11 @@ def _settle_completed_report(slug: str) -> None:
     無い ready レポートが残るため、全て成功した場合だけ ready にする。
     実行中に削除されたレポートは deleted のまま保つ（set_status_unless_deleted）。
     """
-    if _sync_report_artifacts_to_storage(slug):
+    from src.services.audit import store_for
+
+    analyses = [r for r in store_for(slug).list_records() if r["kind"] == "analysis"]
+    audit_complete = not analyses or analyses[0]["status"] == "completed"
+    if _sync_report_artifacts_to_storage(slug) and audit_complete:
         set_status_unless_deleted(slug, "ready")
     else:
         logger.error(f"Failed to sync report artifacts for {slug}; marking report as error")
@@ -348,6 +354,7 @@ def recover_interrupted_reports() -> None:
                 logger.warning(f"Recovering interrupted report {slug}: marking as error")
                 _ensure_error_status_payload(slug, error_override=INTERRUPTED_ERROR)
                 set_status_unless_deleted(slug, "error")
+                ReportSyncService().sync_audit_to_storage(slug)
         except Exception as e:
             logger.error(f"Failed to recover interrupted report {slug}: {e}")
 
@@ -403,6 +410,7 @@ def _monitor_process(process: subprocess.Popen, slug: str, log_file: Any | None 
 
         else:
             _ensure_error_status_payload(slug, _error_message_for_retcode(retcode))
+            ReportSyncService().sync_audit_to_storage(slug)
             set_status_unless_deleted(slug, "error")
     finally:
         if log_file is not None:
@@ -410,6 +418,9 @@ def _monitor_process(process: subprocess.Popen, slug: str, log_file: Any | None 
 
 
 def _launch_analysis_process(cmd: list[str], slug: str, env: dict[str, str]) -> subprocess.Popen:
+    from src.services.audit import restore_audit_index
+
+    restore_audit_index(slug)
     report_dir = settings.REPORT_DIR / slug
     report_dir.mkdir(parents=True, exist_ok=True)
     log_file = _analysis_log_path(slug).open("w", encoding="utf-8")

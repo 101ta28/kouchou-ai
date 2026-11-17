@@ -1,9 +1,12 @@
 import json
 
+from analysis_core.core.utils import write_json_atomic
+
 from src.config import settings
 from src.core.exceptions import ConfigFileNotFound, ConfigJSONParseError
 from src.schemas.report_config import ReportConfig, ReportConfigUpdate
 from src.services.analysis_config import prune_config_for_mode
+from src.services.audit import audit_edit
 from src.utils.logger import setup_logger
 
 slogger = setup_logger()
@@ -45,6 +48,12 @@ class ConfigRepository:
             raise ConfigJSONParseError(f"Error reading JSON file: {e}") from e
 
     def update_json(self, updated_config: ReportConfigUpdate) -> bool:
+        with audit_edit(self.slug, "config_edit") as audit:
+            result = self._update_json(updated_config)
+            audit.success = result
+            return result
+
+    def _update_json(self, updated_config: ReportConfigUpdate) -> bool:
         """中間ファイル（CSVファイル）を更新する"""
         try:
             # 現在の設定を読み込む。configs/<slug>.json がある場合は生の dict をそのまま使い、
@@ -66,8 +75,7 @@ class ConfigRepository:
             # 属すセクションだけ残して書き戻す。
             current_config = prune_config_for_mode(current_config)
 
-            with open(self.config_path, mode="w", encoding="utf-8") as jsonfile:
-                json.dump(current_config, jsonfile, ensure_ascii=False, indent=2)
+            write_json_atomic(self.config_path, current_config)
             return True
         except Exception as e:
             slogger.error(f"Error writing JSON file: {e}")

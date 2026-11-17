@@ -8,6 +8,7 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover
     genai_errors = None
 
+from analysis_core.audit import AuditBusyError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, ORJSONResponse
@@ -29,6 +30,7 @@ from src.schemas.report import Report, ReportStatus
 from src.schemas.report_config import ReportConfigUpdate
 from src.schemas.visualization_config import ReportDisplayConfig, parse_saved_visualization_config
 from src.services.analysis_config import prune_config_for_mode
+from src.services.audit import audit_edit
 from src.services.llm_models import get_models_by_provider
 from src.services.llm_pricing import LLMPricing
 from src.services.report_duplicate import duplicate_report, slug_exists_anywhere
@@ -378,9 +380,21 @@ async def update_report_visibility(
     validate_slug(slug)
     try:
         # Next.js revalidate の同期 HTTP 呼び出しを含むため、イベントループを塞がないよう threadpool で実行する
-        visibility = await run_in_threadpool(update_report_visibility_state, slug, visibility_update.visibility)
+        def update_with_audit():
+            with audit_edit(slug, "visibility_edit") as audit:
+                before = next((report.visibility for report in load_status_as_reports() if report.slug == slug), None)
+                audit.write_data(
+                    "visibility_change.json", {"before": before, "requested": visibility_update.visibility}
+                )
+                visibility = update_report_visibility_state(slug, visibility_update.visibility)
+                audit.write_data("visibility_change.json", {"before": before, "after": visibility})
+                return visibility
+
+        visibility = await run_in_threadpool(update_with_audit)
 
         return {"success": True, "visibility": visibility}
+    except AuditBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         slogger.error(f"ValueError: {e}", exc_info=True)
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -414,7 +428,7 @@ async def update_report_config_endpoint(
     try:
         # 中間ファイル（config.json）を更新
         config_repo = ConfigRepository(slug)
-        is_updated = config_repo.update_json(config)
+        is_updated = await run_in_threadpool(config_repo.update_json, config)
         if not is_updated:
             raise Exception(f"Failed to update config json for {slug}")
 
@@ -433,6 +447,8 @@ async def update_report_config_endpoint(
             "success": True,
             "report": updated_report,
         }
+    except AuditBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         slogger.error(f"ValueError: {e}", exc_info=True)
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -488,7 +504,9 @@ async def update_cluster_label(
     _ensure_report_editable(slug)
     repo = ClusterRepository(slug)
     try:
-        is_csv_updated = repo.update_csv(updated_cluster)
+        is_csv_updated = await run_in_threadpool(repo.update_csv, updated_cluster)
+    except AuditBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ClusterNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     if not is_csv_updated:
@@ -553,8 +571,13 @@ async def update_visualization_config(
         visualization_config_path = report_dir / "visualization_config.json"
 
         # snake_caseで保存（Pydanticのデフォルト）
-        with open(visualization_config_path, mode="w", encoding="utf-8") as f:
-            json.dump(config.model_dump(), f, ensure_ascii=False, indent=2)
+        from analysis_core.core.utils import write_json_atomic
+
+        def update_with_audit():
+            with audit_edit(slug, "visualization_config_edit"):
+                write_json_atomic(visualization_config_path, config.model_dump())
+
+        await run_in_threadpool(update_with_audit)
 
         await run_in_threadpool(invalidate_report_cache, slug)
 
@@ -571,6 +594,8 @@ async def update_visualization_config(
         }
     except HTTPException:
         raise
+    except AuditBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:
         slogger.error(f"Error updating visualization config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error") from e
