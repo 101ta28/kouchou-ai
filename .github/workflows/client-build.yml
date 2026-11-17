@@ -12,6 +12,8 @@ on:
       - 'apps/public-viewer/**'
       - 'apps/shared/**'
       - 'packages/report-schema/**'
+      - 'packages/audit-verifier/**'
+      - 'apps/audit-viewer/**'
       - 'utils/dummy-server/**'
       - '!apps/public-viewer/**/*.md'
   pull_request:
@@ -25,6 +27,8 @@ on:
       - 'apps/public-viewer/**'
       - 'apps/shared/**'
       - 'packages/report-schema/**'
+      - 'packages/audit-verifier/**'
+      - 'apps/audit-viewer/**'
       - 'utils/dummy-server/**'
       - '!apps/public-viewer/**/*.md'
   workflow_dispatch:

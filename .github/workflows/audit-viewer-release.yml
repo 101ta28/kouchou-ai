@@ -1,0 +1,51 @@
+name: Release offline audit tools
+
+on:
+  push:
+    tags: ['audit-viewer-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the explicit release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { VERSION } from './packages/audit-verifier/src/verify.mjs';
+          const version = JSON.parse(readFileSync('packages/audit-verifier/package.json')).version;
+          if (VERSION !== version || process.env.RELEASE_TAG !== `audit-viewer-v${version}`) {
+            throw new Error('Release tag, package version and verifier version must match');
+          }
+          NODE
+      - run: node apps/audit-viewer/build.mjs
+      - run: node --test --experimental-test-isolation=none packages/audit-verifier/tests/*.test.mjs apps/audit-viewer/tests/build.test.mjs
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node --test --experimental-test-isolation=none apps/audit-viewer/tests/browser.test.mjs
+      - name: Publish versioned tools without replacing existing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --title "Offline audit tools $RELEASE_TAG" \
+            --notes-file docs/development/audit-tools-release-notes.md \
+            apps/audit-viewer/dist/audit-viewer.zip \
+            apps/audit-viewer/dist/index.html \
+            apps/audit-viewer/dist/build.json \
+            apps/audit-viewer/dist/SHA256SUMS

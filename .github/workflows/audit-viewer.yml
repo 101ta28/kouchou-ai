@@ -6,6 +6,9 @@ on:
     paths:
       - 'apps/audit-viewer/**'
       - 'packages/audit-verifier/**'
+      - 'apps/public-viewer/**'
+      - 'apps/shared/**'
+      - 'packages/report-schema/**'
       - 'docs/development/independent-audit.md'
       - 'pnpm-lock.yaml'
       - '.github/workflows/audit-viewer.yml'
@@ -13,6 +16,9 @@ on:
     paths:
       - 'apps/audit-viewer/**'
       - 'packages/audit-verifier/**'
+      - 'apps/public-viewer/**'
+      - 'apps/shared/**'
+      - 'packages/report-schema/**'
       - 'docs/development/independent-audit.md'
       - 'pnpm-lock.yaml'
       - '.github/workflows/audit-viewer.yml'
@@ -40,11 +46,13 @@ jobs:
       - name: Build without the API or analysis environment
         run: node apps/audit-viewer/build.mjs
       - name: Verify formats, signatures and reproducible distribution
-        run: node --test --experimental-test-isolation=none packages/audit-verifier/tests/*.test.mjs apps/audit-viewer/tests/build.test.mjs
+        run: node --test --experimental-test-isolation=none packages/audit-verifier/tests/*.test.mjs apps/audit-viewer/tests/build.test.mjs apps/public-viewer/scripts/export-public-audits.test.mjs
       - name: Install browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Exercise offline browser flows
         run: node --test --experimental-test-isolation=none apps/audit-viewer/tests/browser.test.mjs
+      - name: Verify report downloads, tool distribution and static deployment
+        run: node --test apps/public-viewer/scripts/audit-flow.test.mjs
       - name: Upload reviewable distribution
         uses: actions/upload-artifact@v4
         with:
