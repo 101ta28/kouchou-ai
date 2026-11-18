@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ const fixtures = new URL("../../../packages/audit-verifier/fixtures/", import.me
 const fixture = (name) => fileURLToPath(new URL(name, fixtures));
 
 test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.AUDIT_BROWSER_EXECUTABLE });
   t.after(() => browser.close());
   const directory = await mkdtemp(join(tmpdir(), "audit-browser-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -33,21 +33,112 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
   async function open() {
     const page = await context.newPage();
     await page.goto(viewer);
-    await expect(page.locator("h1")).toHaveText("資料を手元で確かめる");
+    await expect(page.locator("h1")).toHaveText("分析の進め方を確認する");
     return page;
   }
+
+  async function uploadDocument(page, edit) {
+    const doc = JSON.parse(await readFile(fixture("public-document.json"), "utf8"));
+    edit(doc);
+    const bytes = Buffer.from(JSON.stringify(doc));
+    const manifest = JSON.parse(await readFile(fixture("public-manifest.json"), "utf8"));
+    manifest.files[0].bytes = bytes.length;
+    manifest.files[0].sha256 = createHash("sha256").update(bytes).digest("hex");
+    await page.locator("#primary-file").setInputFiles({
+      name: "表示確認用の資料.zip",
+      mimeType: "application/zip",
+      buffer: Buffer.from(
+        writeArchive(
+          new Map([
+            ["audit.json", bytes],
+            ["manifest.json", Buffer.from(JSON.stringify(manifest))],
+          ]),
+        ),
+      ),
+    });
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+  }
+
+  await t.test("analysis conditions and readable settings precede technical details", async () => {
+    const page = await open();
+    await expect(page.getByRole("radio", { name: "内部監査", exact: true })).toBeHidden();
+    await page.locator("#primary-file").setInputFiles(fixture("public-valid.zip"));
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+    await expect(page.locator(".overview-panel h2")).toHaveText("分析条件と実行環境");
+    await expect(page.locator(".fact-grid")).toContainText("gpt-4o-mini");
+    await expect(page.locator(".fact-grid")).toContainText("OpenAI");
+    await expect(page.locator(".fact-grid")).toContainText("広聴AI 分析エンジン 0.1.0");
+    await expect(page.locator(".parameter-grid").first()).toContainText("1,000件");
+    await expect(page.locator(".step-description").first()).toContainText("元のコメントから");
+    await expect(page.locator("#audit-form")).toBeHidden();
+    await expect(page.locator("#summary table").first()).toBeHidden();
+    await expect(page.locator(".environment-details table")).toBeHidden();
+    await expect(page.locator(".step-identifiers table").first()).toBeHidden();
+    assert(
+      await page
+        .locator(".overview-panel")
+        .evaluate((node) =>
+          Boolean(
+            node.compareDocumentPosition(document.querySelector(".file-checks")) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+        ),
+    );
+    assert(
+      (await page.locator(".fact-grid").boundingBox()).y < 900,
+      "Analysis conditions are visible without scrolling past technical tables",
+    );
+    await page.locator(".step-heading").first().focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".parameter-grid").first()).toBeHidden();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".parameter-grid").first()).toBeVisible();
+    await page.close();
+  });
+
+  await t.test("skipped, failed, unfinished and missing records remain distinct", async () => {
+    const page = await open();
+    await uploadDocument(page, (doc) => {
+      doc.status = "failed";
+      doc.steps = ["extraction", "embedding", "opinion_classification", "opinion_stance", "opinion_novelty"].map(
+        (name, index) => ({
+          name,
+          status: ["completed", "skipped", "failed", "started", "not_recorded"][index],
+          model: null,
+          parameters: {},
+          prompts: {},
+        }),
+      );
+    });
+    await expect(page.locator(".record-heading .bad")).toHaveText("分析：失敗");
+    await expect(page.locator(".step-failed .step-note")).toBeVisible();
+    await expect(page.locator(".step-started")).toContainText("完了したかは確認できません");
+    await expect(page.locator(".step-not_recorded .check-label")).toHaveText("記録なし");
+    await expect(page.locator(".step-skipped .step-note")).toBeHidden();
+    await page.locator(".step-skipped > details > summary").click();
+    await expect(page.locator(".step-skipped .step-note")).toContainText("過去の結果を再利用した場合も含みます");
+    await uploadDocument(page, (doc) => {
+      doc.model = null;
+      doc.provider = null;
+      doc.steps = [];
+      for (const key of Object.keys(doc.counts)) doc.counts[key] = null;
+    });
+    await expect(page.locator(".fact-grid .fact").first()).toContainText("未記録・非公開");
+    await expect(page.locator(".process-panel")).toContainText("処理ごとの記録はありません");
+    assert(!(await page.locator(".count-grid").innerText()).includes("0件"));
+    await page.close();
+  });
 
   await t.test("sample comparison, keyboard access, JSON download and print", async () => {
     const page = await open();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "本文へ移動" })).toBeFocused();
-    await page.getByRole("button", { name: "架空のサンプルを開く" }).click();
+    await page.getByRole("button", { name: "サンプルで試す" }).click();
     await expect(page.locator("#results")).toBeVisible();
     await expect(page.locator("#comparison")).toContainText("steps.extraction.parameters.workers");
     await expect(page.locator("#sample-notice")).toBeVisible();
     await page.locator("#review-notes").fill("架空の資料で差分を確認しました。");
     const downloading = page.waitForEvent("download");
-    await page.getByRole("button", { name: "検査結果を保存" }).click();
+    await page.getByRole("button", { name: "検査結果とメモを保存（JSON）" }).click();
     const download = await downloading;
     const report = JSON.parse(await readFile(await download.path(), "utf8"));
     assert.equal(report.reports.length, 2);
@@ -78,8 +169,9 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
     ]) {
       await page.locator("#primary-file").setInputFiles(fixture(name));
       await expect(page.locator("#results")).toBeHidden();
-      await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+      await page.getByRole("button", { name: "内容を表示", exact: true }).click();
       await expect(page.locator("#summary")).toContainText(expected);
+      if (name !== "public-valid.zip") await expect(page.locator("#warnings .notice.error")).toBeVisible();
     }
     await page.close();
   });
@@ -87,10 +179,11 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
   await t.test("internal records require explicit mode and never execute embedded text", async () => {
     const page = await open();
     await page.locator("#primary-file").setInputFiles(fixture("internal-example.zip"));
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#error")).toContainText("公開用のZIPではありません");
+    await page.locator("#advanced-options > summary").click();
     await page.getByRole("radio", { name: "内部監査", exact: true }).check();
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("サイズのみ 3件");
     await page.locator("#internal-file").selectOption("inputs/example.csv");
     await page.getByRole("button", { name: "テキストを開く" }).click();
@@ -109,12 +202,13 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
       mimeType: "application/zip",
       buffer: Buffer.from(writeArchive(files)),
     });
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await page.locator("#internal-file").selectOption("config.json");
     await page.getByRole("button", { name: "テキストを開く" }).click();
     await expect(page.getByLabel("選択したファイルの内容")).toContainText("<img");
     assert.equal(await page.evaluate(() => window.injected), undefined);
     assert.equal(await page.locator("img").count(), 0);
+    await page.locator("#input-title").click();
     await page.getByRole("button", { name: "読み込んだ資料を消去" }).click();
     await expect(page.locator("#results")).toBeHidden();
     await page.close();
@@ -129,19 +223,22 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
     await page
       .locator("#primary-file")
       .setInputFiles({ name: "signed-example.zip", mimeType: "application/zip", buffer: Buffer.from(signed.bytes) });
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("公開鍵が未指定のため未検証");
+    await page.locator("#input-title").click();
+    await page.locator("#advanced-options > summary").click();
     await page.getByText("署名・別経路のハッシュを確認する", { exact: true }).click();
     await page.locator("#public-key").setInputFiles({
       name: "public.pem",
       mimeType: "text/plain",
       buffer: Buffer.from(publicKey.export({ format: "pem", type: "spki" })),
     });
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("選択した公開鍵と署名が一致");
+    await page.locator("#input-title").click();
     await page.locator("#expected-digest").fill("0".repeat(64));
     await expect(page.locator("#results")).toBeHidden();
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary .notice.error")).toBeVisible();
     await page.close();
   });
@@ -149,7 +246,7 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
   await t.test("mobile wrapping, large text and no horizontal page overflow", async () => {
     const page = await open();
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.getByRole("button", { name: "架空のサンプルを開く" }).click();
+    await page.getByRole("button", { name: "サンプルで試す" }).click();
     await expect(page.locator("#results")).toBeVisible();
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     if (process.env.AUDIT_SCREENSHOT_DIR) {
@@ -180,8 +277,8 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
     });
     await page.goto(viewer);
     await page.locator("#primary-file").setInputFiles(fixture("public-valid.zip"));
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
-    await page.getByRole("button", { name: "検査を中止", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+    await page.getByRole("button", { name: "読み込みを中止", exact: true }).click();
     await expect(page.locator("#error")).toContainText("検査を中止しました");
     assert.equal(await page.evaluate(() => window.workerTerminations), 1);
     await page.evaluate(() => {
@@ -191,14 +288,14 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
       };
       window.setTimeout = (callback, delay, ...args) => original(callback, delay === 120000 ? 20 : delay, ...args);
     });
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#error")).toContainText("120秒を超えたため中止");
     assert.equal(await page.evaluate(() => window.workerTerminations), 2);
     await page.evaluate(() => {
       window.holdVerification = false;
       window.restoreVerificationTimer();
     });
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("ハッシュ一致 1件");
     await page.close();
   });
@@ -219,7 +316,7 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
     assert.deepEqual(await readFile(await download.path()), await readFile(fixture("public-valid.zip")));
     await page.getByRole("link", { name: "独立した監査ビューアを開く" }).click();
     await page.locator("#primary-file").setInputFiles(await download.path());
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("ハッシュ一致 1件");
     await page.close();
   });

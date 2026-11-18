@@ -211,7 +211,7 @@ test(
     // The hosted copy must also work under its HTTP CSP (including the worker).
     await page.getByRole("link", { name: "ブラウザで検証ツールを開く", exact: true }).click();
     await page.locator("#primary-file").setInputFiles(downloadedPath);
-    await page.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(page.locator("#summary")).toContainText("ハッシュ一致 1件");
     const offline = await browser.newContext({ offline: true });
     const outgoing = [];
@@ -221,7 +221,7 @@ test(
     const localPage = await offline.newPage();
     await localPage.goto(pathToFileURL(join(extracted, "index.html")).href);
     await localPage.locator("#primary-file").setInputFiles(downloadedPath);
-    await localPage.getByRole("button", { name: "資料を検査する", exact: true }).click();
+    await localPage.getByRole("button", { name: "内容を表示", exact: true }).click();
     await expect(localPage.locator("#summary")).toContainText("ハッシュ一致 1件");
     assert.deepEqual(outgoing, []);
     await offline.close();

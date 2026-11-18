@@ -12,36 +12,41 @@
   <a class="skip" href="#main">本文へ移動</a>
   <header class="site-header"><div class="brand">広聴AI <span>監査資料ビューア</span></div><span class="local-label">端末内で処理・外部送信なし</span></header>
   <main id="main">
-    <div class="intro"><p class="eyebrow">保存済みの資料を、運用システムから独立して確認</p><h1>資料を手元で確かめる</h1><p>監査資料のZIPを選び、内容とファイルの一致を確認します。広聴AIの起動やログインは不要です。</p></div>
+    <div class="intro"><p class="eyebrow">レポートができるまでを知る</p><h1>分析の進め方を確認する</h1><p>どのAIを使い、どのような設定で意見をまとめたのか。レポートからダウンロードした監査資料を開くと、分析の条件と処理の記録を確認できます。</p></div>
     <noscript><p class="notice error">このビューアにはJavaScriptが必要です。ZIP内のJSONはテキストエディターでも読むことができます。</p></noscript>
-    <form id="audit-form" class="input-panel">
+    <details id="input-panel" class="input-panel" open>
+      <summary id="input-title">監査資料を開く</summary>
+      <form id="audit-form">
+      <div class="upload-field"><label class="field-label" for="primary-file">レポートから取得したZIPファイル</label><input id="primary-file" type="file" accept=".zip,application/zip" aria-describedby="file-help"><p id="file-help" class="hint">ZIPは展開せず、そのまま選んでください。ファイルは外部に送信されません。</p></div>
+      <details id="comparison-input" class="input-option"><summary>別の資料と比べる</summary><label class="field-label" for="secondary-file">比較するZIPファイル <span>資料B</span></label><input id="secondary-file" type="file" accept=".zip,application/zip"><p class="hint">最初に選んだ資料をA、比較する資料をBとして、設定などの違いを表示します。</p></details>
+      <details id="advanced-options" class="input-option"><summary>管理者・詳しく確認したい方へ</summary>
       <fieldset class="mode"><legend>資料の種類</legend><label><input type="radio" name="audience" value="public" checked> 公開監査</label><label><input type="radio" name="audience" value="internal"> 内部監査</label></fieldset>
-      <p id="mode-help" class="hint">公開用の資料を開きます。元コメントや個人情報を含む内部記録は読み込みません。</p>
-      <div class="file-grid">
-        <div><label class="field-label" for="primary-file">資料AのZIP</label><input id="primary-file" type="file" accept=".zip,application/zip" aria-describedby="file-help"></div>
-        <div id="comparison-input"><label class="field-label" for="secondary-file">資料BのZIP <span>比較する場合</span></label><input id="secondary-file" type="file" accept=".zip,application/zip"></div>
-      </div>
-      <p id="file-help" class="hint">1つのZIPは最大128 MiB。展開後は1ファイル64 MiB、合計256 MiBまでです。</p>
+      <p id="mode-help" class="hint">レポートからダウンロードした資料は「公開監査」で開けます。</p>
       <details class="trust-options"><summary>署名・別経路のハッシュを確認する</summary>
         <p>資料とは別の経路で、発行者と公開鍵の指紋を確認してください。鍵を選ぶだけで発行者の身元が証明されるわけではありません。</p>
         <label class="field-label" for="public-key">確認済みの公開鍵（PEM形式・ECDSA P-256）</label><input id="public-key" type="file" accept=".pem,.pub"><p class="hint">公開鍵のみ受け付けます。秘密鍵は指定しないでください。同じ鍵で資料A・Bの署名を検査します。</p>
         <label class="field-label" for="expected-digest">別経路で取得した資料AのZIPのSHA-256 <span>任意</span></label><input id="expected-digest" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="64" placeholder="小文字の16進数64桁">
       </details>
-      <div class="actions"><button id="verify-button" type="submit">資料を検査する</button><button id="sample-button" type="button" class="secondary">架空のサンプルを開く</button><button id="cancel-button" type="button" class="secondary" hidden>検査を中止</button><button id="clear-button" type="button" class="text-button">読み込んだ資料を消去</button></div>
-    </form>
+      <p class="hint">1つのZIPは最大128 MiB。展開後は1ファイル64 MiB、合計256 MiBまでです。</p>
+      </details>
+      <div class="actions"><button id="verify-button" type="submit">内容を表示</button><button id="sample-button" type="button" class="secondary">サンプルで試す</button><button id="cancel-button" type="button" class="secondary" hidden>読み込みを中止</button><button id="clear-button" type="button" class="text-button">読み込んだ資料を消去</button></div>
+      </form>
+    </details>
     <p id="activity" class="activity" role="status" aria-live="polite"></p>
     <div id="error" class="notice error" role="alert" hidden></div>
     <section id="results" hidden aria-labelledby="results-title">
-      <div class="section-heading"><h2 id="results-title" tabindex="-1">確認できた範囲</h2><div class="actions result-actions"><button id="download-report" class="secondary" type="button">検査結果を保存</button><button id="print-report" class="secondary" type="button">印刷・PDF保存</button></div></div>
+      <div class="section-heading"><h2 id="results-title" tabindex="-1">資料に記録された分析・編集の内容</h2><div class="actions result-actions"><button id="print-report" class="secondary" type="button">印刷・PDF保存</button></div></div>
+      <p class="caption">資料に記載された実行時点の記録です。現在のレポートとの一致や、分析の正確さ・公平さを保証するものではありません。</p>
       <p id="sample-notice" class="notice" hidden>架空の検証用データです。実際の政策分析や監査結果ではありません。</p>
-      <div id="summary"></div>
-      <div id="comparison"></div>
+      <div id="warnings"></div>
       <div id="documents"></div>
-      <section class="section"><h2>この検査では確認していないこと</h2><ul id="limitations"></ul></section>
-      <section class="section"><h2><label for="review-notes">確認者のメモ</label></h2><p class="hint">独自に確認したことや、追加調査が必要なことを記録できます。保存する検査結果に含まれます。</p><textarea id="review-notes" rows="4" maxlength="10000" placeholder="例：原文との照合は未実施。モデル設定の変更を資料A・Bで確認した。"></textarea><p id="notes-print" class="print-only"></p></section>
+      <div id="comparison"></div>
+      <details id="verification-panel" class="section technical-details"><summary>ファイルの照合結果・署名を確認する</summary><div id="summary"></div></details>
+      <details class="section technical-details"><summary>この資料だけでは分からないこと</summary><ul id="limitations"></ul></details>
+      <section class="section"><h2><label for="review-notes">気づいたことをメモする</label></h2><p class="hint">確認したことや、作成者に聞きたいことを記録できます。メモを残すには、印刷・PDF保存か「検査結果とメモを保存（JSON）」を使ってください。</p><textarea id="review-notes" rows="3" maxlength="10000" placeholder="例：意見をグループに分ける基準を、レポートの作成者に確認したい。"></textarea><p id="notes-print" class="print-only"></p><button id="download-report" class="secondary" type="button">検査結果とメモを保存（JSON）</button></section>
       <p id="private-export-notice" class="notice" hidden>内部監査の検査結果には、ファイル名や実行IDなどが含まれます。非公開資料として管理してください。</p>
     </section>
-    <section class="help section"><h2>何を確認するツールですか</h2><p>保存された資料の形式と、マニフェストに記載されたハッシュ・サイズを照合します。署名がある場合は、選択した公開鍵との一致も確認します。原文の正しさや分析の公平性を自動で判定するものではありません。</p><p>すべての処理はこの端末内で行います。サーバーへのアップロードや外部通信、ブラウザへの永続保存は行いません。取得済みの資料について、現在の公開状態や最新版の有無は確認できません。</p></section>
+    <section class="help section"><h2>このビューアで分かること</h2><p>使ったAI、分析の設定、処理が完了したかを、保存された記録から確認できます。ファイルの欠落や、同梱の記録と一致しない箇所も確認します。分析の正確さや公平さを判定するものではありません。</p><p>すべての処理はこの端末内で行います。ログインやインターネット接続は不要です。読み込んだ資料やメモは、この画面を閉じると消去されます。</p></section>
   </main>
   <footer><p>監査資料ビューア <span id="tool-version"></span></p><p>検証コードと形式仕様は配布ZIPに含まれます。第三者による再配布・別の検証ツールでの確認が可能です。</p><details><summary>このビューアのビルド識別子</summary><code id="build-id"></code></details></footer>
   <script>__SCRIPT__</script>
