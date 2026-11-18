@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PublicAudit } from "./PublicAudit";
 
 jest.mock("@/app/utils/public-audit", () => ({
+  ...jest.requireActual("@/app/utils/public-audit"),
   AUDIT_PAGE_SIZE: 20,
   fetchPublicAudits: jest.fn(),
   fetchPublicAuditZip: jest.fn(),
@@ -24,7 +25,7 @@ const row = {
 const show = () =>
   render(
     <Provider>
-      <PublicAudit slug="example" />
+      <PublicAudit slug="example" reportTitle="監査テスト" />
     </Provider>,
   );
 beforeEach(() => {
@@ -81,4 +82,27 @@ it("reports a withdrawn or changed download and lets the user refresh", async ()
   fireEvent.click(screen.getByRole("button", { name: "一覧を再取得" }));
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   expect(await screen.findByText("公開されている監査資料はありません。")).toBeInTheDocument();
+});
+
+it("saves the selected archive with a readable report title and execution date", async () => {
+  list.mockResolvedValue({ total: 1, records: [{ ...row, started_at: "2026-11-18T10:49:20" }] });
+  jest.mocked(fetchPublicAuditZip).mockResolvedValue(new Blob(["archive"]));
+  const createObjectURL = URL.createObjectURL;
+  const revokeObjectURL = URL.revokeObjectURL;
+  URL.createObjectURL = jest.fn(() => "blob:audit");
+  URL.revokeObjectURL = jest.fn();
+  let filename = "";
+  const click = jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    filename = this.download;
+  });
+  try {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "監査資料をダウンロード（ZIP）" }));
+    await waitFor(() => expect(filename).toBe("公開監査資料_監査テスト_分析_2026-11-18_10-49-20.zip"));
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:audit"), { timeout: 1500 });
+  } finally {
+    click.mockRestore();
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+  }
 });

@@ -42,7 +42,7 @@ export function LocalizedReportView({
       <ClientContainer result={localized} />
       <Analysis result={localized} />
       {slug && result.visibility !== "unlisted" && result.visibility !== "private" && (
-        <PublicAudit key={slug} slug={slug} />
+        <PublicAudit key={slug} slug={slug} reportTitle={localized.config.question} />
       )}
       <BackButton />
       <Separator my={12} maxW={"750px"} mx={"auto"} />

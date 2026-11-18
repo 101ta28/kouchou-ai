@@ -1,3 +1,5 @@
+import { auditMessages } from "@/lib/i18n/audit-messages";
+import type { Language } from "@/lib/i18n/languages";
 import { getApiBaseUrl } from "./api";
 import { getRelativeUrl } from "./image-src";
 import { isStaticExportBuild } from "./static-build";
@@ -81,6 +83,26 @@ export async function fetchPublicAudits(slug: string, offset: number, signal: Ab
 
 export function auditFilename(row: PublicAuditRecord) {
   return `${row.run_id}-${row.release_id}.zip`;
+}
+
+export function publicAuditDownloadFilename(reportTitle: string, row: PublicAuditRecord, language: Language) {
+  const text = auditMessages[language];
+  // Keep titles readable while avoiding reserved filename characters and overly long paths.
+  const title = [
+    ...reportTitle
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters cannot be used in filenames.
+      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
+      .trim(),
+  ]
+    .slice(0, 40)
+    .join("")
+    .replace(/[. ]+$/g, "");
+  // Use the same local time as the execution date displayed beside the download button.
+  const date = new Date(row.started_at);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const day = [date.getFullYear(), pad(date.getMonth() + 1), pad(date.getDate())].join("-");
+  const time = [date.getHours(), date.getMinutes(), date.getSeconds()].map(pad).join("-");
+  return `${[text.title, title, text.kinds[row.kind] || text.kinds.other, day, time].filter(Boolean).join("_")}.zip`;
 }
 
 export async function fetchPublicAuditZip(slug: string, row: PublicAuditRecord, signal: AbortSignal): Promise<Blob> {

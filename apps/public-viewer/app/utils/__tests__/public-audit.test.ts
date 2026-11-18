@@ -1,8 +1,13 @@
-import { fetchPublicAudits, parsePublicAuditPage } from "../public-audit";
+import {
+  type PublicAuditRecord,
+  fetchPublicAudits,
+  parsePublicAuditPage,
+  publicAuditDownloadFilename,
+} from "../public-audit";
 
 const originalFetch = global.fetch;
 const originalEnv = process.env;
-const row = {
+const row: PublicAuditRecord = {
   run_id: `20261117T000000000000Z-${"a".repeat(32)}`,
   release_id: "a".repeat(64),
   archive_sha256: "b".repeat(64),
@@ -59,4 +64,28 @@ it.each([
   { ...row, kind: "private arbitrary text" },
 ])("rejects malformed release metadata", (record) => {
   expect(() => parsePublicAuditPage({ total: 1, records: [record] })).toThrow();
+});
+
+it("uses localized labels and the displayed execution time in download filenames", () => {
+  const record = { ...row, kind: "translation", started_at: "2026-11-18T10:49:20" };
+  expect(publicAuditDownloadFilename("監査テスト", record, "ja")).toBe(
+    "公開監査資料_監査テスト_翻訳_2026-11-18_10-49-20.zip",
+  );
+  expect(publicAuditDownloadFilename("Test report", record, "en")).toBe(
+    "Public audit materials_Test report_Translation_2026-11-18_10-49-20.zip",
+  );
+  expect(publicAuditDownloadFilename("테스트", record, "ko")).toBe(
+    "공개 감사 자료_테스트_번역_2026-11-18_10-49-20.zip",
+  );
+});
+
+it("keeps unusual report titles usable as filenames", () => {
+  const record = { ...row, started_at: "2026-11-18T10:49:20" };
+  expect(publicAuditDownloadFilename('  意見/調査: "2026"?\n.  ', record, "ja")).toBe(
+    "公開監査資料_意見_調査_ _2026____分析_2026-11-18_10-49-20.zip",
+  );
+  expect(publicAuditDownloadFilename(" ", record, "ja")).toBe("公開監査資料_分析_2026-11-18_10-49-20.zip");
+  expect(publicAuditDownloadFilename("📝".repeat(100), record, "ja")).toBe(
+    `公開監査資料_${"📝".repeat(40)}_分析_2026-11-18_10-49-20.zip`,
+  );
 });

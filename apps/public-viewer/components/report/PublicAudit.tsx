@@ -7,6 +7,7 @@ import {
   type PublicAuditRecord,
   fetchPublicAuditZip,
   fetchPublicAudits,
+  publicAuditDownloadFilename,
 } from "@/app/utils/public-audit";
 import { isStaticExportBuild } from "@/app/utils/static-build";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -14,7 +15,7 @@ import { auditMessages } from "@/lib/i18n/audit-messages";
 import { Box, Button, Flex, Heading, Link, Text } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 
-export function PublicAudit({ slug }: { slug: string }) {
+export function PublicAudit({ slug, reportTitle }: { slug: string; reportTitle: string }) {
   const { language } = useLanguage();
   const text = auditMessages[language];
   const [page, setPage] = useState<PublicAuditPage | null>(null);
@@ -66,7 +67,7 @@ export function PublicAudit({ slug }: { slug: string }) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `public-audit-${row.run_id}-${row.release_id.slice(0, 12)}.zip`;
+      link.download = publicAuditDownloadFilename(reportTitle, row, language);
       document.body.append(link);
       link.click();
       link.remove();
