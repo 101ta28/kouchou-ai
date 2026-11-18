@@ -693,6 +693,41 @@ export function startViewer({ buildId: VIEWER_BUILD, samples: SAMPLE_ARCHIVES, w
     byId("audit-form").setAttribute("aria-busy", String(value));
   }
 
+  function showError(error) {
+    const notice = byId("error");
+    notice.replaceChildren();
+    if (error.code === "unsupported_zip_format") {
+      notice.append(
+        element("h2", "このZIPファイルは読み込めませんでした"),
+        element("p", "このビューアが対応していないZIPの保存形式です。資料の内容はまだ確認できていません。"),
+      );
+      const steps = element("ol");
+      const internal = document.querySelector('input[name="audience"]:checked').value === "internal";
+      steps.append(
+        element(
+          "li",
+          internal
+            ? "管理画面から内部監査資料のZIPをもう一度ダウンロードしてください。"
+            : "レポートの「公開監査資料」からZIPをもう一度ダウンロードしてください。",
+        ),
+        element("li", "展開や圧縮し直す操作をせず、保存したZIPをそのまま選んでください。"),
+      );
+      notice.append(
+        steps,
+        element(
+          "p",
+          "取得したままのZIPでも開けない場合は、レポートの作成者・管理者に、このエラーと「詳しい原因」の内容をお知らせください。",
+        ),
+      );
+      const details = element("details");
+      details.append(element("summary", "詳しい原因"), element("p", error.message));
+      notice.append(details);
+    } else {
+      notice.textContent = error.message || "資料を読み込めませんでした。";
+    }
+    notice.hidden = false;
+  }
+
   function verifyInWorker(bytes, options) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
@@ -723,8 +758,11 @@ export function startViewer({ buildId: VIEWER_BUILD, samples: SAMPLE_ARCHIVES, w
       worker.onerror = () =>
         finish(new Error("検証処理を起動できませんでした。対応ブラウザとファイルの形式を確認してください。"));
       worker.onmessage = ({ data }) => {
-        if (data.error) finish(new Error(data.error));
-        else {
+        if (data.error) {
+          const error = new Error(data.error);
+          error.code = data.code;
+          finish(error);
+        } else {
           try {
             finish(null, { ...data.result, archive: readArchive(new Uint8Array(data.buffer)) });
           } catch (error) {
@@ -786,8 +824,7 @@ export function startViewer({ buildId: VIEWER_BUILD, samples: SAMPLE_ARCHIVES, w
       byId("activity").textContent =
         `${results.length}件の資料を読み込みました。分析条件と処理の記録を表示しています。`;
     } catch (error) {
-      byId("error").textContent = error.message || "資料を読み込めませんでした。";
-      byId("error").hidden = false;
+      showError(error);
       byId("activity").textContent = "検査を完了できませんでした。";
     } finally {
       busy(false);

@@ -10,14 +10,15 @@ export const LIMITS = Object.freeze({
 });
 
 export class AuditFormatError extends Error {
-  constructor(message) {
+  constructor(message, code) {
     super(message);
     this.name = "AuditFormatError";
+    this.code = code;
   }
 }
 
-export function requireCondition(condition, message) {
-  if (!condition) throw new AuditFormatError(message);
+export function requireCondition(condition, message, code) {
+  if (!condition) throw new AuditFormatError(message, code);
 }
 
 export function safePath(name) {
@@ -56,7 +57,11 @@ export function readArchive(bytes) {
   const u32 = (at) => view.getUint32(at, true);
   // Our export profile has no archive comment, preamble, or trailing bytes.
   const end = bytes.length - 22;
-  requireCondition(u32(end) === 0x06054b50 && u16(end + 20) === 0, "対応していないZIP形式です（末尾・コメント）。");
+  requireCondition(
+    u32(end) === 0x06054b50 && u16(end + 20) === 0,
+    "対応していないZIP形式です（末尾・コメント）。",
+    "unsupported_zip_format",
+  );
   const count = u16(end + 10);
   const size = u32(end + 12);
   const start = u32(end + 16);
@@ -88,6 +93,7 @@ export function readArchive(bytes) {
     requireCondition(
       extraLength === 0 && commentLength === 0 && u16(position + 34) === 0,
       "ZIP64・拡張フィールド・コメントには対応していません。",
+      "unsupported_zip_format",
     );
     requireCondition(mode === 0 || mode === 0x8000, "通常のファイル以外は読み込めません。");
     requireCondition(position + 46 + nameLength <= end, "ZIPのファイル名が破損しています。");

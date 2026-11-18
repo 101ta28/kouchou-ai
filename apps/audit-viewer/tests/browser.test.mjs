@@ -176,6 +176,58 @@ test("standalone viewer in an offline browser", { timeout: 120000 }, async (t) =
     await page.close();
   });
 
+  await t.test("unsupported ZIP metadata shows recovery steps before technical details", async () => {
+    const page = await open();
+    const original = await readFile(fixture("public-valid.zip"));
+    const end = original.length - 22;
+    const directory = original.readUInt32LE(end + 16);
+    const afterName = directory + 46 + original.readUInt16LE(directory + 28);
+    // Valid ZIP metadata that our deliberately limited archive profile rejects.
+    const variants = [];
+    for (const [field, metadata] of [
+      [30, Buffer.from([0x55, 0x54, 5, 0, 1, 0, 0, 0, 0])], // Extended timestamp.
+      [32, Buffer.from("An entry comment")],
+    ]) {
+      const bytes = Buffer.concat([original.subarray(0, afterName), metadata, original.subarray(afterName)]);
+      bytes.writeUInt16LE(metadata.length, directory + field);
+      bytes.writeUInt32LE(original.readUInt32LE(end + 12) + metadata.length, end + metadata.length + 12);
+      variants.push(bytes);
+    }
+    const comment = Buffer.from("An archive comment");
+    const commented = Buffer.concat([original, comment]);
+    commented.writeUInt16LE(comment.length, end + 20);
+    variants.push(commented);
+    for (const buffer of variants) {
+      await page.locator("#primary-file").setInputFiles({ name: "監査資料.zip", mimeType: "application/zip", buffer });
+      await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+      const error = page.getByRole("alert");
+      await expect(error.getByRole("heading")).toHaveText("このZIPファイルは読み込めませんでした");
+      await expect(error).toContainText("資料の内容はまだ確認できていません");
+      await expect(error.locator("li").first()).toContainText("レポートの「公開監査資料」");
+      await expect(error.locator("li").last()).toContainText("保存したZIPをそのまま選んでください");
+      await expect(error).toContainText("取得したままのZIPでも開けない場合");
+      await expect(error.locator("details p")).toBeHidden();
+      assert(!(await error.innerText()).includes("ZIP64"));
+      await expect(page.locator("#results")).toBeHidden();
+      await error.locator("summary").focus();
+      await page.keyboard.press("Enter");
+      await expect(error.locator("details p")).toBeVisible();
+      await expect(error.locator("details p")).toContainText("コメント");
+    }
+    await page.locator("#advanced-options > summary").click();
+    await page.getByRole("radio", { name: "内部監査", exact: true }).check();
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+    await expect(page.locator("#error li").first()).toContainText("管理画面から内部監査資料");
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.getByRole("radio", { name: "公開監査", exact: true }).check();
+    await page.locator("#primary-file").setInputFiles(fixture("public-valid.zip"));
+    await page.getByRole("button", { name: "内容を表示", exact: true }).click();
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator(".overview-panel")).toBeVisible();
+    await page.close();
+  });
+
   await t.test("internal records require explicit mode and never execute embedded text", async () => {
     const page = await open();
     await page.locator("#primary-file").setInputFiles(fixture("internal-example.zip"));

@@ -37,7 +37,7 @@ const samples = await Promise.all(
   })),
 );
 const verifierSource = `const publicSchema = ${JSON.stringify(schema)};\n${modules.map((path) => flatten(sourceFiles.get(path).toString())).join("\n")}`;
-const workerSource = `${verifierSource}\nself.onmessage = async ({data}) => { try { const {report, document, manifest} = await verifyArchive(new Uint8Array(data.buffer), data.options); self.postMessage({result: {report, document, manifest}, buffer: data.buffer}, [data.buffer]); } catch (error) { self.postMessage({error: error.message || "資料を検査できませんでした。"}); } };`;
+const workerSource = `${verifierSource}\nself.onmessage = async ({data}) => { try { const {report, document, manifest} = await verifyArchive(new Uint8Array(data.buffer), data.options); self.postMessage({result: {report, document, manifest}, buffer: data.buffer}, [data.buffer]); } catch (error) { self.postMessage({error: error.message || "資料を検査できませんでした。", code: error.code}); } };`;
 new Script(workerSource);
 const script = `"use strict";\n(() => {\n${verifierSource}\nconst VIEWER_BUILD = ${JSON.stringify(buildId)};\nconst SAMPLE_ARCHIVES = ${JSON.stringify(samples)};\n${flatten(sourceFiles.get("apps/audit-viewer/src/viewer.mjs").toString())}\nstartViewer({buildId: VIEWER_BUILD, samples: SAMPLE_ARCHIVES, workerSource: ${JSON.stringify(workerSource)}});\n})();\n`;
 new Script(script); // Fail the build on duplicate declarations or unsupported bundling.

@@ -249,6 +249,20 @@ summary {
   border-color: #b91c1c;
   color: #991b1b;
 }
+#error h2 {
+  margin: 0 0 .5rem;
+  font-size: 1.1rem;
+}
+#error li + li {
+  margin-top: .4rem;
+}
+#error details {
+  border-top: 1px solid #fecaca;
+  padding-top: .7rem;
+}
+#error details p {
+  margin-bottom: 0;
+}
 .section-heading {
   display: flex;
   flex-wrap: wrap;
